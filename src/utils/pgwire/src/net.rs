@@ -32,11 +32,18 @@ pub(crate) enum Listener {
 }
 
 /// A wrapper of either [`TcpStream`] or [`UnixStream`].
+#[cfg(unix)]
 #[auto_enums::enum_derive(tokio1::AsyncRead, tokio1::AsyncWrite)]
 pub(crate) enum Stream {
     Tcp(TcpStream),
-    #[cfg(unix)]
     Unix(UnixStream),
+}
+
+/// The TCP stream used on platforms without Unix socket support.
+#[cfg(not(unix))]
+#[auto_enums::enum_derive(tokio1::AsyncRead, tokio1::AsyncWrite)]
+pub(crate) enum Stream {
+    Tcp(TcpStream),
 }
 
 /// A wrapper of either [`std::net::SocketAddr`] or [`tokio::net::unix::SocketAddr`].

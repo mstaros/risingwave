@@ -18,10 +18,8 @@ either = "1"
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 hostname = "0.4"
 parking_lot = { workspace = true }
-pprof = { version = "0.15", features = ["flamegraph"] }
 risingwave_common = { workspace = true }
 risingwave_variables = { workspace = true }
-rlimit = "0.11"
 rustls = "0.23.5"
 # Explicitly specify the tokio version used in RisingWave runtime
 rw-tokio = { version = "=1.53.1", package = "tokio" }
@@ -38,6 +36,10 @@ tracing-subscriber = { version = "0.3", features = [
     "local-time",
     "json",
 ] }
+
+[target.'cfg(unix)'.dependencies]
+pprof = { version = "0.15", features = ["flamegraph"] }
+rlimit = "0.11"
 
 [target.'cfg(not(madsim))'.dependencies]
 fastrace = "0.7"

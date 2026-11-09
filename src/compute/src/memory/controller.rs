@@ -46,6 +46,7 @@ impl From<LruEvictionPolicy> for u8 {
 /// - `metadata`: Total number of bytes dedicated to jemalloc metadata.
 ///
 /// Reference: <https://jemalloc.net/jemalloc.3.html>
+#[cfg(unix)]
 pub struct MemoryStats {
     pub allocated: usize,
     pub active: usize,
@@ -54,7 +55,7 @@ pub struct MemoryStats {
 }
 
 /// `LruWatermarkController` controls LRU Watermark (epoch) according to actual memory usage statistics
-/// collected from Jemalloc and JVM.
+/// collected from Jemalloc and JVM on Unix, or process private committed memory on Windows.
 ///
 /// Basically, it works as a negative feedback loop: collect memory statistics, and then set the LRU watarmarking
 /// according to maintain the memory usage in a proper level.
@@ -82,6 +83,9 @@ pub struct LruWatermarkController {
     eviction_factor_aggressive: f64,
 
     watermark_sequence: Sequence,
+
+    #[cfg(windows)]
+    process_metrics: sysinfo::System,
 }
 
 impl LruWatermarkController {
@@ -100,6 +104,8 @@ impl LruWatermarkController {
             eviction_factor_graceful: config.eviction_factor_graceful,
             eviction_factor_aggressive: config.eviction_factor_aggressive,
             watermark_sequence: 0,
+            #[cfg(windows)]
+            process_metrics: sysinfo::System::new(),
         }
     }
 }
@@ -122,6 +128,7 @@ impl std::fmt::Debug for LruWatermarkController {
 /// - `stats.metadata`: Total number of bytes dedicated to jemalloc metadata.
 ///
 /// Reference: <https://jemalloc.net/jemalloc.3.html>
+#[cfg(unix)]
 fn jemalloc_memory_stats() -> MemoryStats {
     if let Err(e) = tikv_jemalloc_ctl::epoch::advance() {
         tracing::warn!("Jemalloc epoch advance failed! {:?}", e);
@@ -141,6 +148,7 @@ fn jemalloc_memory_stats() -> MemoryStats {
 impl LruWatermarkController {
     pub fn tick(&mut self) -> Sequence {
         // NOTE: Be careful! The meaning of `allocated` and `active` differ in JeMalloc and JVM
+        #[cfg(unix)]
         let MemoryStats {
             allocated: jemalloc_allocated_bytes,
             active: jemalloc_active_bytes,
@@ -152,7 +160,31 @@ impl LruWatermarkController {
         #[cfg(not(feature = "java"))]
         let (jvm_allocated_bytes, jvm_active_bytes) = (0, 0);
 
+        #[cfg(unix)]
         let cur_used_memory_bytes = jemalloc_active_bytes + jvm_allocated_bytes;
+        #[cfg(windows)]
+        let cur_used_memory_bytes = {
+            use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate};
+
+            let pid = Pid::from_u32(std::process::id());
+            self.process_metrics.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&[pid]),
+                true,
+                ProcessRefreshKind::nothing().with_memory(),
+            );
+            // sysinfo maps virtual_memory() to Windows PROCESS_MEMORY_COUNTERS_EX.PrivateUsage.
+            // This includes the JVM, if enabled, so do not add JVM usage a second time.
+            let private_bytes = self
+                .process_metrics
+                .process(pid)
+                .expect("Failed to read current process memory usage")
+                .virtual_memory();
+            assert!(
+                private_bytes > 0,
+                "Windows process memory usage is unavailable"
+            );
+            usize::try_from(private_bytes).expect("Process memory usage does not fit usize")
+        };
 
         // To calculate the total amount of memory that needs to be evicted, we sequentially calculate and accumulate
         // the memory amounts exceeding the thresholds for aggressive, graceful, and stable, multiplying each by
@@ -200,23 +232,66 @@ impl LruWatermarkController {
             .lru_eviction_policy
             .set(Into::<u8>::into(policy) as _);
 
-        self.metrics
-            .jemalloc_allocated_bytes
-            .set(jemalloc_allocated_bytes as _);
-        self.metrics
-            .jemalloc_active_bytes
-            .set(jemalloc_active_bytes as _);
-        self.metrics
-            .jemalloc_resident_bytes
-            .set(jemalloc_resident_bytes as _);
-        self.metrics
-            .jemalloc_metadata_bytes
-            .set(jemalloc_metadata_bytes as _);
+        #[cfg(unix)]
+        {
+            self.metrics
+                .jemalloc_allocated_bytes
+                .set(jemalloc_allocated_bytes as _);
+            self.metrics
+                .jemalloc_active_bytes
+                .set(jemalloc_active_bytes as _);
+            self.metrics
+                .jemalloc_resident_bytes
+                .set(jemalloc_resident_bytes as _);
+            self.metrics
+                .jemalloc_metadata_bytes
+                .set(jemalloc_metadata_bytes as _);
+        }
         self.metrics
             .jvm_allocated_bytes
             .set(jvm_allocated_bytes as _);
         self.metrics.jvm_active_bytes.set(jvm_active_bytes as _);
 
         self.watermark_sequence
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use risingwave_common::config::MetricLevel;
+
+    use super::*;
+
+    #[test]
+    fn windows_process_memory_drives_eviction_policy() {
+        let metrics = Arc::new(StreamingMetrics::new(
+            &prometheus::Registry::new(),
+            MetricLevel::Disabled,
+        ));
+        let mut config = MemoryManagerConfig {
+            target_memory: usize::MAX,
+            threshold_stable: 0.7,
+            threshold_graceful: 0.8,
+            threshold_aggressive: 0.9,
+            eviction_factor_stable: 0.1,
+            eviction_factor_graceful: 0.5,
+            eviction_factor_aggressive: 1.0,
+            metrics: metrics.clone(),
+        };
+
+        LruWatermarkController::new(&config).tick();
+        assert_eq!(
+            metrics.lru_eviction_policy.get(),
+            u8::from(LruEvictionPolicy::None) as i64
+        );
+
+        // Any real Windows process exceeds this budget. A missing/zero memory
+        // reading must never leave eviction disabled.
+        config.target_memory = 1;
+        LruWatermarkController::new(&config).tick();
+        assert_eq!(
+            metrics.lru_eviction_policy.get(),
+            u8::from(LruEvictionPolicy::Aggressive) as i64
+        );
     }
 }

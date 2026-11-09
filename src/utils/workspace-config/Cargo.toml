@@ -25,7 +25,8 @@ ignored = [
 # some crates opt-in static linking, while some opt-in dynamic linking,
 # so they are two features :)
 openssl-vendored = ["vendored-openssl-sys"]
-rw-static-link = ["static-libz-sys", "static-lzma-sys", "static-sasl2-sys"]
+rw-static-link = ["static-libz-sys", "static-lzma-sys", "static-sasl2-sys?/gssapi-vendored"]
+kafka = ["dep:static-sasl2-sys"]
 rw-dynamic-link = ["dynamic-zstd-sys"]
 fips = ["aws-lc-rs"]
 
@@ -41,9 +42,7 @@ static-libz-sys = { package = "libz-sys", version = "1", optional = true, featur
 static-lzma-sys = { package = "liblzma-sys", version = "0.4", optional = true, features = [
     "static",
 ] }
-static-sasl2-sys = { package = "sasl2-sys", version = "0.1", optional = true, features = [
-    "gssapi-vendored",
-] }
+static-sasl2-sys = { package = "sasl2-sys", version = "0.1", optional = true }
 vendored-openssl-sys = { package = "openssl-sys", version = "0.9.96", optional = true, features = [
     "vendored",
 ] }

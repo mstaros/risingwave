@@ -100,10 +100,9 @@ pub struct ComputeNodeOpts {
     ///
     /// ## Why need this?
     ///
-    /// Our [`crate::memory::manager::MemoryManager`] works by reading the memory statistics from
-    /// Jemalloc. This is fine when running the compute node alone; while for standalone mode,
-    /// the memory usage of **all nodes** are counted. Thus, we need to pass a reasonable total
-    /// usage so that the memory is kept around this value.
+    /// Our [`crate::memory::manager::MemoryManager`] reads Jemalloc statistics on Unix and
+    /// process private committed memory on Windows. In standalone mode, memory usage from
+    /// **all nodes** is counted, so this target must account for the entire process.
     #[clap(long, env = "RW_MEMORY_MANAGER_TARGET_BYTES")]
     pub memory_manager_target_bytes: Option<usize>,
 

@@ -14,16 +14,18 @@ chrono = { workspace = true, features = [
 ] }
 itertools = { workspace = true }
 parking_lot = { workspace = true }
-pprof = { version = "0.15", features = ["flamegraph"] }
 risingwave_common = { workspace = true }
 risingwave_pb = { workspace = true }
 risingwave_rpc_client = { workspace = true }
 thiserror = { workspace = true }
 thiserror-ext = { workspace = true }
-tikv-jemalloc-ctl = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 tracing = "0.1"
+
+[target.'cfg(unix)'.dependencies]
+pprof = { version = "0.15", features = ["flamegraph"] }
+tikv-jemalloc-ctl = { workspace = true }
 
 [lints]
 workspace = true

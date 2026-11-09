@@ -12,27 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(target_os = "linux")]
 use std::ffi::CString;
+#[cfg(unix)]
 use std::fs;
+#[cfg(unix)]
 use std::path::Path;
 
+#[cfg(unix)]
 use itertools::Itertools;
 use risingwave_common::config::ServerConfig;
 use risingwave_pb::monitor_service::{
     AnalyzeHeapRequest, AnalyzeHeapResponse, HeapProfilingRequest, HeapProfilingResponse,
     ListHeapProfilingRequest, ListHeapProfilingResponse, ProfilingRequest, ProfilingResponse,
 };
+#[cfg(unix)]
 use risingwave_rpc_client::error::ToTonicStatus as _;
+#[cfg(unix)]
 use thiserror_ext::AsReport;
+#[cfg(unix)]
 use tokio::time::Duration;
-use tonic::{Code, Request, Response, Status};
+#[cfg(unix)]
+use tonic::Code;
+use tonic::{Request, Response, Status};
 
+#[cfg(unix)]
 use crate::{AUTO_DUMP_SUFFIX, COLLAPSED_SUFFIX, MANUALLY_DUMP_SUFFIX};
 
 /// Implementation of the profiling related services in `MonitorService`.
 /// Can be reused to implement the same services in different types of worker nodes.
 #[derive(Clone)]
 pub struct ProfileServiceImpl {
+    #[cfg_attr(not(unix), expect(dead_code))]
     server_config: ServerConfig,
 }
 
@@ -41,6 +52,7 @@ impl ProfileServiceImpl {
         Self { server_config }
     }
 
+    #[cfg(unix)]
     pub async fn profiling(
         &self,
         request: Request<ProfilingRequest>,
@@ -70,6 +82,7 @@ impl ProfileServiceImpl {
         }
     }
 
+    #[cfg(target_os = "linux")]
     pub fn heap_profiling(
         &self,
         request: Request<HeapProfilingRequest>,
@@ -78,12 +91,6 @@ impl ProfileServiceImpl {
         use std::path::PathBuf;
 
         use tikv_jemalloc_ctl;
-
-        if !cfg!(target_os = "linux") {
-            return Err(Status::unimplemented(
-                "heap profiling is only implemented on Linux",
-            ));
-        }
 
         if !tikv_jemalloc_ctl::opt::prof::read().unwrap() {
             return Err(Status::failed_precondition(
@@ -120,6 +127,7 @@ impl ProfileServiceImpl {
         }
     }
 
+    #[cfg(unix)]
     pub fn list_heap_profiling(
         &self,
         _request: Request<ListHeapProfilingRequest>,
@@ -159,6 +167,7 @@ impl ProfileServiceImpl {
         }))
     }
 
+    #[cfg(unix)]
     pub async fn analyze_heap(
         &self,
         request: Request<AnalyzeHeapRequest>,
@@ -176,5 +185,45 @@ impl ProfileServiceImpl {
 
         let file = fs::read(Path::new(&collapsed_path_str))?;
         Ok(Response::new(AnalyzeHeapResponse { result: file }))
+    }
+
+    #[cfg(not(unix))]
+    pub async fn profiling(
+        &self,
+        _request: Request<ProfilingRequest>,
+    ) -> Result<Response<ProfilingResponse>, Status> {
+        Err(Status::unimplemented(
+            "CPU profiling is unavailable on this platform",
+        ))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn heap_profiling(
+        &self,
+        _request: Request<HeapProfilingRequest>,
+    ) -> Result<Response<HeapProfilingResponse>, Status> {
+        Err(Status::unimplemented(
+            "heap profiling is only implemented on Linux",
+        ))
+    }
+
+    #[cfg(not(unix))]
+    pub fn list_heap_profiling(
+        &self,
+        _request: Request<ListHeapProfilingRequest>,
+    ) -> Result<Response<ListHeapProfilingResponse>, Status> {
+        Err(Status::unimplemented(
+            "heap profiling is unavailable on this platform",
+        ))
+    }
+
+    #[cfg(not(unix))]
+    pub async fn analyze_heap(
+        &self,
+        _request: Request<AnalyzeHeapRequest>,
+    ) -> Result<Response<AnalyzeHeapResponse>, Status> {
+        Err(Status::unimplemented(
+            "heap profiling is unavailable on this platform",
+        ))
     }
 }

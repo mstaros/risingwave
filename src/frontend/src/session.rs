@@ -1678,6 +1678,7 @@ impl SessionManagerImpl {
             // Check HBA configuration for LDAP authentication
             let (connection_type, client_addr) = match peer_addr.as_ref() {
                 Address::Tcp(socket_addr) => (ConnectionType::Host, Some(&socket_addr.ip())),
+                #[cfg(unix)]
                 Address::Unix(_) => (ConnectionType::Local, None),
             };
             tracing::debug!(

@@ -49,12 +49,17 @@ risingwave_stream = { workspace = true }
 serde = { workspace = true }
 serde_json = "1"
 thiserror-ext = { workspace = true }
-tikv-jemalloc-ctl = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 tokio-stream = { workspace = true }
 tonic = { workspace = true }
 tower = { version = "0.5", features = ["util", "load-shed"] }
 tracing = "0.1"
+
+[target.'cfg(unix)'.dependencies]
+tikv-jemalloc-ctl = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 [target.'cfg(not(madsim))'.dependencies]
 workspace-hack = { path = "../workspace-hack" }

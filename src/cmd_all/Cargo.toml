@@ -58,6 +58,7 @@ udf = ["risingwave_expr_impl/udf"]
 fips = ["workspace-config/fips"]
 all-connectors = ["risingwave_connector/all-sinks-heavy", "all-connectors-lite"]
 all-connectors-lite = [
+    "kafka",
     "risingwave_connector/all-sinks-lite",
     "risingwave_connector/all-sources",
     "risingwave_compute/all-sources",
@@ -86,9 +87,6 @@ risingwave_rt = { workspace = true }
 shell-words = "1.1.0"
 strum = "0.28"
 strum_macros = "0.28"
-tikv-jemallocator = { workspace = true, features = [
-    "unprefixed_malloc_on_supported_platforms",
-] }
 tokio = { workspace = true, features = ["fs"] }
 tracing = { version = "0.1" }
 workspace-config = { path = "../utils/workspace-config" }
@@ -109,6 +107,15 @@ vergen = { version = "8", default-features = false, features = [
 name = "risingwave"
 path = "src/bin/risingwave.rs"
 test = false
+
+[target.'cfg(unix)'.dependencies]
+tikv-jemallocator = { workspace = true, features = [
+    "unprefixed_malloc_on_supported_platforms",
+] }
+
+[target.'cfg(windows)'.dev-dependencies]
+tempfile = "3"
+tokio-postgres = "0.7"
 
 [lints]
 workspace = true

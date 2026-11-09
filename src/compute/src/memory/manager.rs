@@ -22,8 +22,8 @@ use risingwave_stream::executor::monitor::StreamingMetrics;
 use super::controller::LruWatermarkController;
 
 pub struct MemoryManagerConfig {
-    /// [`MemoryManager`] will try to control the jemalloc-reported memory usage
-    /// to be lower than this
+    /// [`MemoryManager`] will try to keep memory usage below this target: jemalloc
+    /// active memory on Unix, or process private committed memory on Windows.
     pub target_memory: usize,
 
     pub threshold_aggressive: f64,

@@ -16,7 +16,9 @@ use risingwave_common::array::Finite32;
 use risingwave_common::types::{DataType, F32, F64, ListRef, ScalarRefImpl, VectorRef, VectorVal};
 use risingwave_common::util::iter_util::ZipEqFast;
 use risingwave_common::vector::MeasureDistanceBuilder;
-use risingwave_common::vector::distance::{L1Distance, L2SqrDistance, inner_product};
+use risingwave_common::vector::distance::{
+    L1Distance, L2SqrDistance, inner_product as vector_inner_product,
+};
 use risingwave_expr::expr::Context;
 use risingwave_expr::{ExprError, Result, function};
 
@@ -202,7 +204,7 @@ fn l1_distance(lhs: VectorRef<'_>, rhs: VectorRef<'_>) -> Result<F64> {
 #[function("inner_product(vector, vector) -> float8")]
 fn inner_product(lhs: VectorRef<'_>, rhs: VectorRef<'_>) -> Result<F64> {
     check_dims("inner_product", lhs, rhs)?;
-    Ok(inner_product(lhs, rhs).into())
+    Ok(vector_inner_product(lhs, rhs).into())
 }
 
 /// ```slt

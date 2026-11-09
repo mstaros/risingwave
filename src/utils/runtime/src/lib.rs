@@ -32,7 +32,9 @@ mod deadlock;
 pub use deadlock::*;
 mod panic_hook;
 pub use panic_hook::*;
+#[cfg(unix)]
 mod prof;
+#[cfg(unix)]
 use prof::*;
 #[cfg(unix)]
 use tokio::signal::unix::SignalKind;
@@ -122,8 +124,13 @@ where
         }
     }
 
+    #[cfg(unix)]
     if let Ok(profile_path) = std::env::var("RW_PROFILE_PATH") {
         spawn_prof_thread(profile_path);
+    }
+    #[cfg(not(unix))]
+    if std::env::var_os("RW_PROFILE_PATH").is_some() {
+        panic!("CPU profiling via RW_PROFILE_PATH is unavailable on this platform");
     }
 
     let future_with_shutdown = async move {
