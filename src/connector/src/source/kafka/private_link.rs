@@ -13,12 +13,15 @@
 // limitations under the License.
 
 use std::collections::{BTreeMap, HashMap};
+#[cfg(feature = "kafka")]
 use std::str::FromStr;
 
 use anyhow::{Context, anyhow};
 use itertools::Itertools;
+#[cfg(feature = "kafka")]
 use rdkafka::client::BrokerAddr;
 use risingwave_common::bail;
+#[cfg(feature = "kafka")]
 use risingwave_common::util::addr::HostAddr;
 use risingwave_common::util::iter_util::ZipEqFast;
 use risingwave_pb::catalog::connection::PrivateLinkService;
@@ -32,6 +35,7 @@ use crate::source::kafka::{KAFKA_PROPS_BROKER_KEY, KAFKA_PROPS_BROKER_KEY_ALIAS}
 
 pub const PRIVATELINK_ENDPOINT_KEY: &str = "privatelink.endpoint";
 
+#[cfg(feature = "kafka")]
 #[derive(Debug)]
 pub(super) enum PrivateLinkContextRole {
     Consumer,
@@ -44,6 +48,7 @@ struct PrivateLinkEndpointItem {
     host: String,
 }
 
+#[cfg(feature = "kafka")]
 impl std::fmt::Display for PrivateLinkContextRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -53,12 +58,14 @@ impl std::fmt::Display for PrivateLinkContextRole {
     }
 }
 
+#[cfg(feature = "kafka")]
 pub(super) struct BrokerAddrRewriter {
     #[expect(dead_code)]
     role: PrivateLinkContextRole,
     rewrite_map: BTreeMap<BrokerAddr, BrokerAddr>,
 }
 
+#[cfg(feature = "kafka")]
 impl BrokerAddrRewriter {
     pub(super) fn rewrite_broker_addr(&self, addr: BrokerAddr) -> BrokerAddr {
         match self.rewrite_map.get(&addr) {

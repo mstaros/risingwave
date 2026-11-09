@@ -244,8 +244,8 @@ reqwest = { version = "0.13.4", features = ["json", "stream"] }
 risingwave_backup = { path = "./src/storage/backup" }
 risingwave_batch = { path = "./src/batch" }
 risingwave_batch_executors = { path = "./src/batch/executors" }
-risingwave_cmd = { path = "./src/cmd" }
-risingwave_common = { path = "./src/common" }
+risingwave_cmd = { path = "./src/cmd", default-features = false }
+risingwave_common = { path = "./src/common", default-features = false }
 risingwave_common_estimate_size = { path = "./src/common/estimate_size" }
 risingwave_common_heap_profiling = { path = "./src/common/heap_profiling" }
 risingwave_common_metrics = { path = "./src/common/metrics" }
@@ -253,15 +253,15 @@ risingwave_common_proc_macro = { path = "./src/common/proc_macro" }
 risingwave_common_rate_limit = { path = "./src/common/rate_limit" }
 risingwave_common_service = { path = "./src/common/common_service" }
 risingwave_compactor = { path = "./src/storage/compactor" }
-risingwave_compute = { path = "./src/compute" }
-risingwave_connector = { path = "./src/connector" }
+risingwave_compute = { path = "./src/compute", default-features = false }
+risingwave_connector = { path = "./src/connector", default-features = false }
 risingwave_connector_codec = { path = "./src/connector/codec" }
-risingwave_ctl = { path = "./src/ctl" }
+risingwave_ctl = { path = "./src/ctl", default-features = false }
 risingwave_dml = { path = "./src/dml" }
 risingwave_error = { path = "./src/error" }
 risingwave_expr = { path = "./src/expr/core" }
 risingwave_expr_impl = { path = "./src/expr/impl" }
-risingwave_frontend = { path = "./src/frontend" }
+risingwave_frontend = { path = "./src/frontend", default-features = false }
 risingwave_hummock_sdk = { path = "./src/storage/hummock_sdk" }
 risingwave_hummock_test = { path = "./src/storage/hummock_test" }
 risingwave_hummock_trace = { path = "./src/storage/hummock_trace" }
@@ -281,7 +281,7 @@ risingwave_rpc_client = { path = "./src/rpc_client" }
 risingwave_rt = { path = "./src/utils/runtime" }
 risingwave_sqlparser = { path = "./src/sqlparser" }
 risingwave_sqlsmith = { path = "./src/tests/sqlsmith" }
-risingwave_storage = { path = "./src/storage" }
+risingwave_storage = { path = "./src/storage", default-features = false }
 risingwave_stream = { path = "./src/stream" }
 risingwave_telemetry_event = { path = "./src/common/telemetry_event" }
 risingwave_test_runner = { path = "./src/test_runner" }

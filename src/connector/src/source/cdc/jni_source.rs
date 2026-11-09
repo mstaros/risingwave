@@ -12,11 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "java")]
 use anyhow::Context;
+#[cfg(feature = "java")]
 use risingwave_common::global_jvm::Jvm;
+#[cfg(feature = "java")]
 use risingwave_jni_core::jvm_runtime::execute_with_jni_env;
+#[cfg(feature = "java")]
 use risingwave_jni_core::{call_method, call_static_method};
 
+#[cfg(not(feature = "java"))]
+pub fn commit_cdc_offset(_source_id: u64, _encoded_offset: String) -> anyhow::Result<()> {
+    anyhow::bail!("CDC offset commits require a build with the `java` feature")
+}
+
+#[cfg(feature = "java")]
 pub fn commit_cdc_offset(source_id: u64, encoded_offset: String) -> anyhow::Result<()> {
     let jvm = Jvm::get_or_init()?;
     execute_with_jni_env(jvm, |env| {

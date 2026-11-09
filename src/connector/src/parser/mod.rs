@@ -252,6 +252,7 @@ impl<'a> MessageMeta<'a> {
             // Extract the offset from the meta data.
             SourceColumnType::Offset => Some(self.offset.into()),
             // Extract custom meta data per connector.
+            #[cfg(feature = "kafka")]
             SourceColumnType::Meta if let SourceMeta::Kafka(kafka_meta) = self.source_meta => {
                 assert_eq!(
                     desc.name.as_str(),

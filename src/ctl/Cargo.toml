@@ -10,6 +10,20 @@ repository = { workspace = true }
 [lib]
 test = false
 
+[features]
+kafka = [
+    "risingwave_connector/kafka",
+    "risingwave_frontend/kafka",
+]
+faiss = [
+    "risingwave_common/faiss",
+    "risingwave_connector/faiss",
+    "risingwave_frontend/faiss",
+    "risingwave_storage/faiss",
+]
+default = ["java", "kafka", "faiss"]
+java = ["risingwave_common/java", "risingwave_connector/java", "risingwave_frontend/java"]
+
 [dependencies]
 anyhow = "1"
 bytes = "1"

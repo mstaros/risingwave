@@ -14,6 +14,10 @@
 
 /// Test if JVM and Java libraries are working.
 pub fn test_jvm() -> anyhow::Result<()> {
+    #[cfg(feature = "java")]
     let _ = risingwave_common::global_jvm::Jvm::get_or_init()?;
+    #[cfg(not(feature = "java"))]
+    anyhow::bail!("This build does not include Java support");
+    #[cfg(feature = "java")]
     Ok(())
 }

@@ -125,6 +125,7 @@ pub(super) async fn bytes_from_url(
 
 pub fn extract_timestamp_from_meta(meta: &SourceMeta) -> DatumRef<'_> {
     match meta {
+        #[cfg(feature = "kafka")]
         SourceMeta::Kafka(kafka_meta) => kafka_meta.extract_timestamp(),
         SourceMeta::DebeziumCdc(cdc_meta) => cdc_meta.extract_timestamp(),
         SourceMeta::Kinesis(kinesis_meta) => kinesis_meta.extract_timestamp(),
@@ -151,6 +152,7 @@ pub fn extract_cdc_meta_column<'a>(
 
 pub fn extract_headers_from_meta(meta: &SourceMeta) -> Option<Datum> {
     match meta {
+        #[cfg(feature = "kafka")]
         SourceMeta::Kafka(kafka_meta) => kafka_meta.extract_headers(), /* expect output of type `array[struct<varchar, bytea>]` */
         SourceMeta::Pulsar(pulsar_meta) => pulsar_meta.extract_headers(), /* expect output of type `array[struct<varchar, bytea>]` */
         SourceMeta::Nats(nats_meta) => nats_meta.extract_headers(), /* expect output of type `array[struct<varchar, bytea>]` */
@@ -174,6 +176,7 @@ pub fn extract_header_inner_from_meta<'a>(
     data_type: Option<&PbDataType>,
 ) -> Option<DatumCow<'a>> {
     match meta {
+        #[cfg(feature = "kafka")]
         SourceMeta::Kafka(kafka_meta) => kafka_meta.extract_header_inner(inner_field, data_type), /* expect output of type `bytea` or `varchar` */
         SourceMeta::Pulsar(pulsar_meta) => pulsar_meta.extract_header_inner(inner_field, data_type),
         SourceMeta::Nats(nats_meta) => nats_meta.extract_header_inner(inner_field, data_type), /* expect output of type `bytea` or `varchar` */

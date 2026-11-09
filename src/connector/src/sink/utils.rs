@@ -47,10 +47,10 @@ pub(crate) mod dummy {
     use crate::sink::{LogSinker, SinkCommitCoordinator, SinkLogReader};
 
     #[allow(dead_code)]
-    pub fn err_feature_not_enabled(sink_name: &'static str) -> SinkError {
+    pub fn err_feature_not_enabled(feature: &'static str) -> SinkError {
         SinkError::Config(anyhow!(
-            "RisingWave is not compiled with feature `sink-{}`",
-            sink_name
+            "RisingWave is not compiled with feature `{}`",
+            feature
         ))
     }
 
@@ -58,6 +58,7 @@ pub(crate) mod dummy {
     pub trait FeatureNotEnabledSinkMarker: Send + 'static {
         #[allow(dead_code)]
         const SINK_NAME: &'static str;
+        const FEATURE: &'static str;
     }
 
     /// A dummy coordinator that always returns an error.
@@ -66,7 +67,7 @@ pub(crate) mod dummy {
     #[async_trait::async_trait]
     impl<S: FeatureNotEnabledSinkMarker> LogSinker for FeatureNotEnabledLogSinker<S> {
         async fn consume_log_and_sink(self, _log_reader: impl SinkLogReader) -> Result<!> {
-            Err(err_feature_not_enabled(S::SINK_NAME))
+            Err(err_feature_not_enabled(S::FEATURE))
         }
     }
 
@@ -86,7 +87,7 @@ pub(crate) mod dummy {
         type Error = SinkError;
 
         fn try_from(_value: SinkParam) -> std::result::Result<Self, Self::Error> {
-            Err(err_feature_not_enabled(S::SINK_NAME))
+            Err(err_feature_not_enabled(S::FEATURE))
         }
     }
 
@@ -94,11 +95,11 @@ pub(crate) mod dummy {
         const ENFORCE_SECRET_PROPERTIES: Set<&'static str> = phf_set! {};
 
         fn enforce_secret<'a>(_prop_iter: impl Iterator<Item = &'a str>) -> ConnectorResult<()> {
-            Err(err_feature_not_enabled(S::SINK_NAME).into())
+            Err(err_feature_not_enabled(S::FEATURE).into())
         }
 
         fn enforce_one(_prop: &str) -> ConnectorResult<()> {
-            Err(err_feature_not_enabled(S::SINK_NAME).into())
+            Err(err_feature_not_enabled(S::FEATURE).into())
         }
     }
 
@@ -108,15 +109,15 @@ pub(crate) mod dummy {
         const SINK_NAME: &'static str = S::SINK_NAME;
 
         async fn new_log_sinker(&self, _writer_param: SinkWriterParam) -> Result<Self::LogSinker> {
-            Err(err_feature_not_enabled(S::SINK_NAME))
+            Err(err_feature_not_enabled(S::FEATURE))
         }
 
         fn validate_alter_config(_config: &BTreeMap<String, String>) -> Result<()> {
-            Err(err_feature_not_enabled(S::SINK_NAME))
+            Err(err_feature_not_enabled(S::FEATURE))
         }
 
         async fn validate(&self) -> Result<()> {
-            Err(err_feature_not_enabled(S::SINK_NAME))
+            Err(err_feature_not_enabled(S::FEATURE))
         }
 
         fn is_coordinated_sink(&self) -> bool {
@@ -127,7 +128,7 @@ pub(crate) mod dummy {
             &self,
             _iceberg_compact_stat_sender: Option<UnboundedSender<IcebergSinkCompactionUpdate>>,
         ) -> Result<SinkCommitCoordinator> {
-            Err(err_feature_not_enabled(S::SINK_NAME))
+            Err(err_feature_not_enabled(S::FEATURE))
         }
     }
 }
@@ -141,20 +142,24 @@ macro_rules! feature_gated_sink_mod {
         crate::sink::utils::feature_gated_sink_mod!($mod_name, $mod_name, $sink_name);
     };
     ($mod_name:ident, $struct_prefix:ident, $sink_name:literal) => {
+        crate::sink::utils::feature_gated_sink_mod!($mod_name, $struct_prefix, $sink_name, "sink-" $sink_name);
+    };
+    ($mod_name:ident, $struct_prefix:ident, $sink_name:literal, $($feature:literal)+) => {
         paste::paste! {
-        #[cfg(feature = "sink-" $sink_name)]
+        #[cfg(feature = $($feature)+)]
         pub mod $mod_name;
-        #[cfg(not(feature = "sink-" $sink_name))]
+        #[cfg(not(feature = $($feature)+))]
         pub mod $mod_name {
             use crate::sink::utils::dummy::{FeatureNotEnabledSinkMarker, FeatureNotEnabledSink};
             pub struct [<$struct_prefix:camel NotEnabled>];
             pub const [<$sink_name:upper _SINK>]: &'static str = $sink_name;
             impl FeatureNotEnabledSinkMarker for [<$struct_prefix:camel NotEnabled>] {
                 const SINK_NAME: &'static str = [<$sink_name:upper _SINK>];
+                const FEATURE: &'static str = concat!($($feature),+);
             }
-            #[doc = "A dummy sink that always returns an error, as the feature `sink-" $sink_name "` is currently not enabled."]
+            #[doc = "A dummy sink that always returns an error, as the feature `" $($feature)+ "` is currently not enabled."]
             pub type [<$struct_prefix:camel Sink>] = FeatureNotEnabledSink<[<$struct_prefix:camel NotEnabled>]>;
-            #[doc = "A dummy sink config that is empty, as the feature `sink-" $sink_name "` is currently not enabled."]
+            #[doc = "A dummy sink config that is empty, as the feature `" $($feature)+ "` is currently not enabled."]
             #[derive(serde::Deserialize)]
             pub struct [<$struct_prefix:camel Config>] {
                 #[serde(flatten)]

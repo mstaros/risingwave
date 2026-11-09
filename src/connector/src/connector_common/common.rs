@@ -29,6 +29,7 @@ use moka::ops::compute::Op;
 use phf::{Set, phf_set};
 use pulsar::authentication::oauth2::{OAuth2Authentication, OAuth2Params};
 use pulsar::{Authentication, OperationRetryOptions, Pulsar, TokioExecutor};
+#[cfg(feature = "kafka")]
 use rdkafka::ClientConfig;
 use risingwave_common::bail;
 use rustls_pki_types::pem::PemObject;
@@ -444,6 +445,7 @@ pub struct RdKafkaPropertiesCommon {
     pub retry_backoff_max_ms: Option<usize>,
 }
 
+#[cfg(feature = "kafka")]
 impl RdKafkaPropertiesCommon {
     pub(crate) fn set_client(&self, c: &mut rdkafka::ClientConfig) {
         if let Some(v) = self.statistics_interval_ms {
@@ -515,6 +517,7 @@ impl KafkaConnectionProps {
         }
     }
 
+    #[cfg(feature = "kafka")]
     pub(crate) fn set_security_properties(&self, config: &mut ClientConfig) {
         // AWS_MSK_IAM
         if self.is_aws_msk_iam() {
@@ -1367,7 +1370,7 @@ const fn default_tcp_keepalive_count() -> u32 {
     3
 }
 
-#[cfg(all(test, not(madsim)))]
+#[cfg(all(test, not(madsim), feature = "kafka"))]
 mod tests {
     use super::*;
 

@@ -75,6 +75,7 @@ impl WithOptions for std::time::Duration {}
 impl WithOptions for crate::connector_common::MqttQualityOfService {}
 impl WithOptions for crate::connector_common::SslMode {}
 impl WithOptions for crate::sink::file_sink::opendal_sink::PathPartitionPrefix {}
+#[cfg(feature = "kafka")]
 impl WithOptions for crate::sink::kafka::CompressionCodec {}
 impl WithOptions for crate::sink::pulsar::PulsarRoutingMode {}
 impl WithOptions for crate::source::filesystem::file_common::CompressionFormat {}

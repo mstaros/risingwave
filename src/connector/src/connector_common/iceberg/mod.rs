@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub mod compaction;
+#[cfg(feature = "java")]
 mod jni_catalog;
 mod mock_catalog;
 mod storage_catalog;
@@ -458,6 +459,11 @@ impl<'a> ResolvedIcebergCatalogConfig<'a> {
                     .map_err(|e| anyhow!(IcebergError::from(e)))?;
                 Ok(Arc::new(catalog))
             }
+            #[cfg(not(feature = "java"))]
+            CatalogBuildPlan::Jni { .. } => {
+                bail!("This Iceberg catalog requires a build with the `java` feature; use a native Rust catalog")
+            }
+            #[cfg(feature = "java")]
             CatalogBuildPlan::Jni {
                 file_io_props,
                 catalog_name,

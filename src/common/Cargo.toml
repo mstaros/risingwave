@@ -7,6 +7,11 @@ keywords = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
 
+[features]
+default = ["java", "faiss"]
+faiss = ["dep:faiss"]
+java = ["dep:jni"]
+
 [dependencies]
 ahash = "0.8"
 allocator-api2 = "0.2"
@@ -37,7 +42,7 @@ either = "1"
 enum-as-inner = "0.7"
 enumflags2 = { version = "0.7.8" }
 ethnum = { version = "1", features = ["serde"] }
-faiss = { workspace = true }
+faiss = { workspace = true, optional = true }
 fixedbitset = "0.5"
 foyer = { workspace = true }
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
@@ -50,7 +55,7 @@ ipnet = "2.12"
 itertools = { workspace = true }
 itoa = "1.0"
 jiff = "0.2.35"
-jni = { workspace = true }
+jni = { workspace = true, optional = true }
 jsonbb = { workspace = true }
 linkme = { workspace = true }
 memcomparable = { version = "0.2", features = ["decimal"] }

@@ -32,6 +32,7 @@ use risingwave_common::catalog::{
     RISINGWAVE_ICEBERG_ROW_ID, ROW_ID_COLUMN_NAME, TableId,
 };
 use risingwave_common::config::MetaBackend;
+#[cfg(feature = "java")]
 use risingwave_common::global_jvm::Jvm;
 use risingwave_common::session_config::sink_decouple::SinkDecouple;
 use risingwave_common::types::DataType;
@@ -1756,7 +1757,10 @@ pub async fn create_iceberg_engine_table(
 
     // before we create the table, ensure the JVM is initialized as we use jdbc catalog right now.
     // If JVM isn't initialized successfully, current not atomic ddl will result in a partially created iceberg engine table.
+    #[cfg(feature = "java")]
     let _ = Jvm::get_or_init()?;
+    #[cfg(not(feature = "java"))]
+    Err::<(), _>(anyhow::anyhow!("Iceberg engine tables require a build with the `java` feature"))?;
 
     let catalog_writer = session.catalog_writer()?;
     let action = match job_type {

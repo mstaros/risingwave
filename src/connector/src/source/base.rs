@@ -39,6 +39,7 @@ use tokio::sync::mpsc;
 use super::cdc::DebeziumCdcMeta;
 use super::datagen::DatagenMeta;
 use super::google_pubsub::GooglePubsubMeta;
+#[cfg(feature = "kafka")]
 use super::kafka::KafkaMeta;
 use super::kinesis::KinesisMeta;
 use super::monitor::SourceMetrics;
@@ -933,6 +934,7 @@ impl SourceMessage {
 
 #[derive(Debug, Clone)]
 pub enum SourceMeta {
+    #[cfg(feature = "kafka")]
     Kafka(KafkaMeta),
     Kinesis(KinesisMeta),
     Pulsar(PulsarMeta),

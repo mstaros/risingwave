@@ -15,13 +15,19 @@
 use async_trait::async_trait;
 use futures_async_stream::try_stream;
 use itertools::Itertools;
+#[cfg(feature = "java")]
 use prost::Message;
 use risingwave_common::bail;
+#[cfg(feature = "java")]
 use risingwave_common::global_jvm::Jvm;
 use risingwave_common::metrics::GLOBAL_ERROR_METRICS;
+#[cfg(feature = "java")]
 use risingwave_jni_core::jvm_runtime::execute_with_jni_env;
-use risingwave_jni_core::{JniReceiverType, OwnedPointer, call_static_method};
-use risingwave_pb::connector_service::{GetEventStreamRequest, GetEventStreamResponse};
+#[cfg(feature = "java")]
+use risingwave_jni_core::{OwnedPointer, call_static_method};
+#[cfg(feature = "java")]
+use risingwave_pb::connector_service::GetEventStreamRequest;
+use risingwave_pb::connector_service::GetEventStreamResponse;
 use thiserror_ext::AsReport;
 use tokio::sync::mpsc;
 
@@ -47,9 +53,10 @@ pub struct CdcSplitReader<T: CdcSourceTypeTrait> {
     snapshot_done: bool,
     parser_config: ParserConfig,
     source_ctx: SourceContextRef,
-    rx: JniReceiverType<anyhow::Result<GetEventStreamResponse>>,
+    rx: mpsc::Receiver<anyhow::Result<GetEventStreamResponse>>,
 }
 
+#[cfg(feature = "java")]
 const DEFAULT_CHANNEL_SIZE: usize = 16;
 
 #[async_trait]
@@ -64,115 +71,123 @@ impl<T: CdcSourceTypeTrait> SplitReader for CdcSplitReader<T> {
         source_ctx: SourceContextRef,
         _columns: Option<Vec<Column>>,
     ) -> ConnectorResult<Self> {
-        assert_eq!(splits.len(), 1);
-        let split = splits.into_iter().next().unwrap();
-        let split_id = split.id();
+        #[cfg(not(feature = "java"))]
+        {
+            let _ = (conn_props, splits, parser_config, source_ctx);
+            bail!("CDC sources require a build with the `java` feature");
+        }
+        #[cfg(feature = "java")]
+        {
+            assert_eq!(splits.len(), 1);
+            let split = splits.into_iter().next().unwrap();
+            let split_id = split.id();
 
-        let properties = conn_props.properties.clone();
+            let properties = conn_props.properties.clone();
 
-        let source_id = split.split_id() as u64;
-        let source_type = conn_props.get_source_type_pb();
-        let (tx, mut rx) = mpsc::channel(DEFAULT_CHANNEL_SIZE);
+            let source_id = split.split_id() as u64;
+            let source_type = conn_props.get_source_type_pb();
+            let (tx, mut rx) = mpsc::channel(DEFAULT_CHANNEL_SIZE);
 
-        let jvm = Jvm::get_or_init()?;
-        let get_event_stream_request = GetEventStreamRequest {
-            source_id,
-            source_type: source_type as _,
-            start_offset: split.start_offset().clone().unwrap_or_default(),
-            properties,
-            snapshot_done: split.snapshot_done(),
-            is_source_job: conn_props.is_cdc_source_job,
-        };
+            let jvm = Jvm::get_or_init()?;
+            let get_event_stream_request = GetEventStreamRequest {
+                source_id,
+                source_type: source_type as _,
+                start_offset: split.start_offset().clone().unwrap_or_default(),
+                properties,
+                snapshot_done: split.snapshot_done(),
+                is_source_job: conn_props.is_cdc_source_job,
+            };
 
-        std::thread::spawn(move || {
-            execute_with_jni_env(jvm, |env| {
-                let result: anyhow::Result<_> = try {
-                    let get_event_stream_request_bytes = env
-                        .byte_array_from_slice(&Message::encode_to_vec(&get_event_stream_request))
-                        .map_err(anyhow::Error::from)?;
-                    (env, get_event_stream_request_bytes)
-                };
+            std::thread::spawn(move || {
+                execute_with_jni_env(jvm, |env| {
+                    let result: anyhow::Result<_> = try {
+                        let get_event_stream_request_bytes = env
+                            .byte_array_from_slice(&Message::encode_to_vec(&get_event_stream_request))
+                            .map_err(anyhow::Error::from)?;
+                        (env, get_event_stream_request_bytes)
+                    };
 
-                let (env, get_event_stream_request_bytes) = match result {
-                    Ok(inner) => inner,
-                    Err(e) => {
-                        let _ = tx.blocking_send(Err(
-                            e.context("err before calling runJniDbzSourceThread")
-                        ));
-                        return Ok(());
-                    }
-                };
+                    let (env, get_event_stream_request_bytes) = match result {
+                        Ok(inner) => inner,
+                        Err(e) => {
+                            let _ = tx.blocking_send(Err(
+                                e.context("err before calling runJniDbzSourceThread")
+                            ));
+                            return Ok(());
+                        }
+                    };
 
-                // `runJniDbzSourceThread` will take ownership of `tx`, and release it later in
-                // `Java_com_risingwave_java_binding_Binding_cdcSourceSenderClose` via ref cleaner.
-                let tx: OwnedPointer<_> = tx.into();
+                    // `runJniDbzSourceThread` will take ownership of `tx`, and release it later in
+                    // `Java_com_risingwave_java_binding_Binding_cdcSourceSenderClose` via ref cleaner.
+                    let tx: OwnedPointer<_> = tx.into();
 
-                let result = call_static_method!(
-                    env,
-                    {com.risingwave.connector.source.core.JniDbzSourceHandler},
-                    {void runJniDbzSourceThread(byte[] getEventStreamRequestBytes, long channelPtr)},
-                    &get_event_stream_request_bytes,
-                    tx.into_pointer()
-                );
-
-                match result {
-                    Ok(_) => {
-                        tracing::info!(?source_id, "end of jni call runJniDbzSourceThread");
-                    }
-                    Err(e) => {
-                        tracing::error!(?source_id, error = %e.as_report(), "jni call error");
-                    }
-                }
-
-                Ok(())
-            })
-        });
-
-        // wait for the handshake message
-        if let Some(res) = rx.recv().await {
-            let resp: GetEventStreamResponse = res?;
-            let inited = match resp.control {
-                Some(info) => info.handshake_ok,
-                None => {
-                    tracing::error!(
-                        ?source_id,
-                        "did not receive the CDC handshake message: {:?}",
-                        resp
+                    let result = call_static_method!(
+                        env,
+                        {com.risingwave.connector.source.core.JniDbzSourceHandler},
+                        {void runJniDbzSourceThread(byte[] getEventStreamRequestBytes, long channelPtr)},
+                        &get_event_stream_request_bytes,
+                        tx.into_pointer()
                     );
-                    false
+
+                    match result {
+                        Ok(_) => {
+                            tracing::info!(?source_id, "end of jni call runJniDbzSourceThread");
+                        }
+                        Err(e) => {
+                            tracing::error!(?source_id, error = %e.as_report(), "jni call error");
+                        }
+                    }
+
+                    Ok(())
+                })
+            });
+
+            // wait for the handshake message
+            if let Some(res) = rx.recv().await {
+                let resp: GetEventStreamResponse = res?;
+                let inited = match resp.control {
+                    Some(info) => info.handshake_ok,
+                    None => {
+                        tracing::error!(
+                            ?source_id,
+                            "did not receive the CDC handshake message: {:?}",
+                            resp
+                        );
+                        false
+                    }
+                };
+                if !inited {
+                    bail!(
+                        "failed to start the CDC connector before the timeout (default: 60s).\n\
+                        HINT: You can increase the timeout by:\n\
+                        - Alter the running source: ALTER SOURCE <source_name> CONNECTOR WITH (cdc.source.wait.streaming.start.timeout = '<larger_value>');\n\
+                        - Set the session variable and recreate the source: SET cdc_source_wait_streaming_start_timeout = <larger_value>;"
+                    );
+                }
+            }
+            tracing::info!(?source_id, "CDC connector started");
+
+            let instance = match T::source_type() {
+                CdcSourceType::Mysql
+                | CdcSourceType::Postgres
+                | CdcSourceType::Mongodb
+                | CdcSourceType::SqlServer
+                | CdcSourceType::Oracle => Self {
+                    source_id: split.split_id() as u64,
+                    start_offset: split.start_offset().clone(),
+                    conn_props,
+                    split_id,
+                    snapshot_done: split.snapshot_done(),
+                    parser_config,
+                    source_ctx,
+                    rx,
+                },
+                CdcSourceType::Unspecified => {
+                    unreachable!();
                 }
             };
-            if !inited {
-                bail!(
-                    "failed to start the CDC connector before the timeout (default: 60s).\n\
-                    HINT: You can increase the timeout by:\n\
-                    - Alter the running source: ALTER SOURCE <source_name> CONNECTOR WITH (cdc.source.wait.streaming.start.timeout = '<larger_value>');\n\
-                    - Set the session variable and recreate the source: SET cdc_source_wait_streaming_start_timeout = <larger_value>;"
-                );
-            }
+            Ok(instance)
         }
-        tracing::info!(?source_id, "CDC connector started");
-
-        let instance = match T::source_type() {
-            CdcSourceType::Mysql
-            | CdcSourceType::Postgres
-            | CdcSourceType::Mongodb
-            | CdcSourceType::SqlServer
-            | CdcSourceType::Oracle => Self {
-                source_id: split.split_id() as u64,
-                start_offset: split.start_offset().clone(),
-                conn_props,
-                split_id,
-                snapshot_done: split.snapshot_done(),
-                parser_config,
-                source_ctx,
-                rx,
-            },
-            CdcSourceType::Unspecified => {
-                unreachable!();
-            }
-        };
-        Ok(instance)
     }
 
     fn into_stream(self) -> BoxSourceChunkStream {

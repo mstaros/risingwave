@@ -34,6 +34,7 @@ mod panic_hook;
 pub use panic_hook::*;
 mod prof;
 use prof::*;
+#[cfg(unix)]
 use tokio::signal::unix::SignalKind;
 
 const MIN_WORKER_THREADS: usize = 4;
@@ -129,8 +130,14 @@ where
         let shutdown = CancellationToken::new();
         let mut fut = pin!(f(shutdown.clone()));
 
+        #[cfg(unix)]
         let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt()).unwrap();
+        #[cfg(windows)]
+        let mut sigint = tokio::signal::windows::ctrl_c().unwrap();
+        #[cfg(unix)]
         let mut sigterm = tokio::signal::unix::signal(SignalKind::terminate()).unwrap();
+        #[cfg(windows)]
+        let mut sigterm = tokio::signal::windows::ctrl_break().unwrap();
 
         tokio::select! {
             biased;
@@ -158,7 +165,7 @@ where
             // Watch SIGTERM, typically originating from Kubernetes.
             // Attempt to shutdown gracefully. No need to force shutdown since it will send SIGKILL after a timeout.
             _ = sigterm.recv() => {
-                tracing::info!("received SIGTERM, shutting down...");
+                tracing::info!("received termination signal, shutting down...");
                 shutdown.cancel();
                 fut.await;
             }

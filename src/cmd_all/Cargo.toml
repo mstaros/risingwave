@@ -26,7 +26,31 @@ ignored = [
 ]
 
 [features]
-default = ["rw-static-link", "all-connectors"]
+kafka = [
+    "risingwave_cmd/kafka",
+    "risingwave_connector/kafka",
+    "risingwave_compute/kafka",
+    "risingwave_frontend/kafka",
+    "risingwave_ctl/kafka",
+]
+faiss = [
+    "risingwave_cmd/faiss",
+    "risingwave_common/faiss",
+    "risingwave_connector/faiss",
+    "risingwave_compute/faiss",
+    "risingwave_frontend/faiss",
+    "risingwave_ctl/faiss",
+]
+java = [
+    "dep:risingwave_jni_core",
+    "risingwave_cmd/java",
+    "risingwave_common/java",
+    "risingwave_compute/java",
+    "risingwave_connector/java",
+    "risingwave_ctl/java",
+    "risingwave_frontend/java",
+]
+default = ["rw-static-link", "all-connectors", "java", "kafka", "faiss"]
 rw-static-link = ["workspace-config/rw-static-link"]
 rw-dynamic-link = ["workspace-config/rw-dynamic-link"]
 openssl-vendored = ["workspace-config/openssl-vendored"]
@@ -56,7 +80,7 @@ risingwave_connector = { workspace = true }
 risingwave_ctl = { workspace = true }
 risingwave_expr_impl = { workspace = true }
 risingwave_frontend = { workspace = true }
-risingwave_jni_core = { workspace = true }
+risingwave_jni_core = { workspace = true, optional = true }
 risingwave_meta_node = { workspace = true }
 risingwave_rt = { workspace = true }
 shell-words = "1.1.0"

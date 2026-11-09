@@ -62,6 +62,7 @@ def_anyhow_newtype! {
     tokio_postgres::Error => "Postgres error",
     tiberius::error::Error => "Sql Server error",
     apache_avro::Error => "Avro error",
+    #[cfg(feature = "kafka")]
     rdkafka::error::KafkaError => "Kafka error",
     pulsar::Error => "Pulsar error",
 

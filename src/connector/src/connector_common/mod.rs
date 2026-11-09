@@ -29,9 +29,11 @@ pub use common::{
     TcpKeepaliveConfig,
 };
 mod connection;
+#[cfg(feature = "kafka")]
+pub use connection::read_kafka_log_level;
 pub use connection::{
     ConfluentSchemaRegistryConnection, Connection, ElasticsearchConnection, IcebergConnection,
-    KafkaConnection, SCHEMA_REGISTRY_CONNECTION_TYPE, read_kafka_log_level, validate_connection,
+    KafkaConnection, SCHEMA_REGISTRY_CONNECTION_TYPE, validate_connection,
 };
 pub use iceberg::compaction::{IcebergCommittedSnapshot, IcebergSinkCompactionUpdate};
 

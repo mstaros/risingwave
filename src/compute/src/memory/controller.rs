@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use risingwave_common::sequence::{SEQUENCE_GLOBAL, Sequence};
+#[cfg(feature = "java")]
 use risingwave_jni_core::jvm_runtime::load_jvm_memory_stats;
 use risingwave_stream::executor::monitor::StreamingMetrics;
 
@@ -146,7 +147,10 @@ impl LruWatermarkController {
             resident: jemalloc_resident_bytes,
             metadata: jemalloc_metadata_bytes,
         } = jemalloc_memory_stats();
+        #[cfg(feature = "java")]
         let (jvm_allocated_bytes, jvm_active_bytes) = load_jvm_memory_stats();
+        #[cfg(not(feature = "java"))]
+        let (jvm_allocated_bytes, jvm_active_bytes) = (0, 0);
 
         let cur_used_memory_bytes = jemalloc_active_bytes + jvm_allocated_bytes;
 

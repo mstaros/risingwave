@@ -14,6 +14,7 @@
 
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
+#[cfg(feature = "java")]
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -21,13 +22,19 @@ use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use mysql_async::Row;
 use mysql_async::prelude::*;
+#[cfg(feature = "java")]
 use prost::Message;
+#[cfg(feature = "java")]
 use risingwave_common::global_jvm::Jvm;
 use risingwave_common::id::SourceId;
 use risingwave_common::metrics::{LabelGuardedIntGauge, LabelGuardedIntGaugeVec};
+#[cfg(feature = "java")]
 use risingwave_jni_core::call_static_method;
+#[cfg(feature = "java")]
 use risingwave_jni_core::jvm_runtime::execute_with_jni_env;
-use risingwave_pb::connector_service::{SourceType, ValidateSourceRequest, ValidateSourceResponse};
+use risingwave_pb::connector_service::SourceType;
+#[cfg(feature = "java")]
+use risingwave_pb::connector_service::{ValidateSourceRequest, ValidateSourceResponse};
 use tiberius::Config;
 use tokio_postgres::types::PgLsn;
 
@@ -79,73 +86,81 @@ where
         props: CdcProperties<T>,
         context: SourceEnumeratorContextRef,
     ) -> ConnectorResult<Self> {
-        assert_eq!(
-            props.get_source_type_pb(),
-            SourceType::from(T::source_type())
-        );
+        #[cfg(not(feature = "java"))]
+        {
+            let _ = (props, context);
+            return Err(anyhow!("CDC sources require a build with the `java` feature").into());
+        }
+        #[cfg(feature = "java")]
+        {
+            assert_eq!(
+                props.get_source_type_pb(),
+                SourceType::from(T::source_type())
+            );
 
-        let jvm = Jvm::get_or_init()?;
-        let source_id = context.info.source_id;
+            let jvm = Jvm::get_or_init()?;
+            let source_id = context.info.source_id;
 
-        // Extract fields before moving props
-        let source_type_pb = props.get_source_type_pb();
+            // Extract fields before moving props
+            let source_type_pb = props.get_source_type_pb();
 
-        // Create Arc once and share it
-        let properties_arc = Arc::new(props.properties);
-        let properties_arc_for_validation = properties_arc.clone();
-        let table_schema_for_validation = props.table_schema;
+            // Create Arc once and share it
+            let properties_arc = Arc::new(props.properties);
+            let properties_arc_for_validation = properties_arc.clone();
+            let table_schema_for_validation = props.table_schema;
 
-        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-            execute_with_jni_env(jvm, |env| {
-                let validate_source_request = ValidateSourceRequest {
-                    source_id: source_id.as_raw_id() as u64,
-                    source_type: source_type_pb as _,
-                    properties: (*properties_arc_for_validation).clone(),
-                    table_schema: Some(table_schema_exclude_additional_columns(
-                        &table_schema_for_validation,
-                    )),
-                    is_source_job: props.is_cdc_source_job,
-                    is_backfill_table: props.is_backfill_table,
-                };
+            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                execute_with_jni_env(jvm, |env| {
+                    let validate_source_request = ValidateSourceRequest {
+                        source_id: source_id.as_raw_id() as u64,
+                        source_type: source_type_pb as _,
+                        properties: (*properties_arc_for_validation).clone(),
+                        table_schema: Some(table_schema_exclude_additional_columns(
+                            &table_schema_for_validation,
+                        )),
+                        is_source_job: props.is_cdc_source_job,
+                        is_backfill_table: props.is_backfill_table,
+                    };
 
-                let validate_source_request_bytes =
-                    env.byte_array_from_slice(&Message::encode_to_vec(&validate_source_request))?;
+                    let validate_source_request_bytes =
+                        env.byte_array_from_slice(&Message::encode_to_vec(&validate_source_request))?;
 
-                let validate_source_response_bytes = call_static_method!(
-                    env,
-                    {com.risingwave.connector.source.JniSourceValidateHandler},
-                    {byte[] validate(byte[] validateSourceRequestBytes)},
-                    &validate_source_request_bytes
-                )?;
+                    let validate_source_response_bytes = call_static_method!(
+                        env,
+                        {com.risingwave.connector.source.JniSourceValidateHandler},
+                        {byte[] validate(byte[] validateSourceRequestBytes)},
+                        &validate_source_request_bytes
+                    )?;
 
-                let validate_source_response: ValidateSourceResponse = Message::decode(
-                    risingwave_jni_core::to_guarded_slice(&validate_source_response_bytes, env)?
-                        .deref(),
-                )?;
+                    let validate_source_response: ValidateSourceResponse = Message::decode(
+                        risingwave_jni_core::to_guarded_slice(&validate_source_response_bytes, env)?
+                            .deref(),
+                    )?;
 
-                if let Some(error) = validate_source_response.error {
-                    return Err(anyhow!(error.error_message).context("source validation failed"));
-                }
+                    if let Some(error) = validate_source_response.error {
+                        return Err(anyhow!(error.error_message).context("source validation failed"));
+                    }
 
-                Ok(())
+                    Ok(())
+                })
             })
-        })
-        .await
-        .context("failed to validate source")??;
+            .await
+            .context("failed to validate source")??;
 
-        tracing::debug!("validate cdc source properties success");
-        Ok(Self {
-            source_id,
-            metrics: context.metrics.clone(),
-            pg_cdc_upstream_max_lsn: None,
-            pg_cdc_confirmed_flush_lsn: None,
-            mysql_cdc_binlog_file_seq_min: None,
-            mysql_cdc_binlog_file_seq_max: None,
-            sqlserver_cdc_upstream_min_lsn: None,
-            sqlserver_cdc_upstream_max_lsn: None,
-            properties: properties_arc,
-            _phantom: PhantomData,
-        })
+            tracing::debug!("validate cdc source properties success");
+            Ok(Self {
+                source_id,
+                metrics: context.metrics.clone(),
+                pg_cdc_upstream_max_lsn: None,
+                pg_cdc_confirmed_flush_lsn: None,
+                mysql_cdc_binlog_file_seq_min: None,
+                mysql_cdc_binlog_file_seq_max: None,
+                sqlserver_cdc_upstream_min_lsn: None,
+                sqlserver_cdc_upstream_max_lsn: None,
+                properties: properties_arc,
+                _phantom: PhantomData,
+            })
+        }
     }
 
     async fn list_splits(&mut self) -> ConnectorResult<Vec<DebeziumCdcSplit<T>>> {

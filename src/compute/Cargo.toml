@@ -8,6 +8,16 @@ license = { workspace = true }
 repository = { workspace = true }
 
 [features]
+kafka = [
+    "risingwave_connector/kafka",
+]
+faiss = [
+    "risingwave_common/faiss",
+    "risingwave_connector/faiss",
+    "risingwave_storage/faiss",
+]
+default = ["java", "kafka", "faiss"]
+java = ["dep:risingwave_jni_core", "risingwave_common/java", "risingwave_connector/java"]
 all-sources = ["risingwave_stream/all-sources"]
 
 [dependencies]
@@ -31,7 +41,7 @@ risingwave_common_service = { workspace = true }
 risingwave_connector = { workspace = true }
 risingwave_dml = { workspace = true }
 risingwave_hummock_sdk = { workspace = true }
-risingwave_jni_core = { workspace = true }
+risingwave_jni_core = { workspace = true, optional = true }
 risingwave_pb = { workspace = true }
 risingwave_rpc_client = { workspace = true }
 risingwave_storage = { workspace = true }

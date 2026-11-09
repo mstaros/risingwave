@@ -23,10 +23,27 @@ normal = ["workspace-hack", "workspace-config", "task_stats_alloc"]
 test = false
 
 [features]
+kafka = [
+    "risingwave_compute/kafka",
+    "risingwave_frontend/kafka",
+    "risingwave_ctl/kafka",
+]
+faiss = [
+    "risingwave_common/faiss",
+    "risingwave_compute/faiss",
+    "risingwave_frontend/faiss",
+    "risingwave_ctl/faiss",
+]
+java = [
+    "risingwave_common/java",
+    "risingwave_compute/java",
+    "risingwave_ctl/java",
+    "risingwave_frontend/java",
+]
 rw-static-link = ["workspace-config/rw-static-link"]
 rw-dynamic-link = ["workspace-config/rw-dynamic-link"]
 openssl-vendored = ["workspace-config/openssl-vendored"]
-default = ["rw-static-link"]
+default = ["rw-static-link", "java", "kafka", "faiss"]
 fips = ["workspace-config/fips"]
 
 [dependencies]

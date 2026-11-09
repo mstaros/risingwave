@@ -99,7 +99,7 @@ impl MeasureDistanceBuilder for L1Distance {
     }
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
+#[cfg_attr(all(not(test), feature = "faiss"), expect(dead_code))]
 fn l1_trivial(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
     let first = first.as_slice();
     let second = second.as_slice();
@@ -113,13 +113,20 @@ fn l1_trivial(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
         .sum()
 }
 
-pub fn l1_faiss(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
-    faiss::utils::fvec_l1(first.as_raw_slice(), second.as_raw_slice()) as VectorDistance
+pub fn l1_distance(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
+    #[cfg(feature = "faiss")]
+    {
+        faiss::utils::fvec_l1(first.as_raw_slice(), second.as_raw_slice()) as VectorDistance
+    }
+    #[cfg(not(feature = "faiss"))]
+    {
+        l1_trivial(first, second)
+    }
 }
 
 impl<'a> MeasureDistance for L1DistanceMeasure<'a> {
     fn measure(&self, other: VectorRef<'_>) -> VectorDistance {
-        l1_faiss(self.0, other)
+        l1_distance(self.0, other)
     }
 }
 
@@ -139,7 +146,7 @@ impl MeasureDistanceBuilder for L2SqrDistance {
     }
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
+#[cfg_attr(all(not(test), feature = "faiss"), expect(dead_code))]
 fn l2sqr_trivial(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
     let first = first.as_slice();
     let second = second.as_slice();
@@ -150,13 +157,20 @@ fn l2sqr_trivial(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance 
         .sum()
 }
 
-pub fn l2sqr_faiss(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
-    faiss::utils::fvec_l2sqr(first.as_raw_slice(), second.as_raw_slice()) as VectorDistance
+pub fn l2_squared_distance(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
+    #[cfg(feature = "faiss")]
+    {
+        faiss::utils::fvec_l2sqr(first.as_raw_slice(), second.as_raw_slice()) as VectorDistance
+    }
+    #[cfg(not(feature = "faiss"))]
+    {
+        l2sqr_trivial(first, second)
+    }
 }
 
 impl<'a> MeasureDistance for L2SqrDistanceMeasure<'a> {
     fn measure(&self, other: VectorRef<'_>) -> VectorDistance {
-        l2sqr_faiss(self.0, other)
+        l2_squared_distance(self.0, other)
     }
 }
 
@@ -189,7 +203,7 @@ fn cosine_distance_inner(
     if l2_norm_mul < f32::MIN_POSITIVE {
         None
     } else {
-        Some(1.0 - inner_product_faiss(first, second) / l2_norm_mul as VectorDistance)
+        Some(1.0 - inner_product(first, second) / l2_norm_mul as VectorDistance)
     }
 }
 
@@ -213,7 +227,7 @@ impl MeasureDistanceBuilder for InnerProductDistance {
     }
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
+#[cfg_attr(all(not(test), feature = "faiss"), expect(dead_code))]
 fn inner_product_trivial(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
     let first = first.as_slice();
     let second = second.as_slice();
@@ -246,13 +260,20 @@ fn inner_product_simd(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDist
         + sum
 }
 
-pub fn inner_product_faiss(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
-    faiss::utils::fvec_inner_product(first.as_raw_slice(), second.as_raw_slice()) as VectorDistance
+pub fn inner_product(first: VectorRef<'_>, second: VectorRef<'_>) -> VectorDistance {
+    #[cfg(feature = "faiss")]
+    {
+        faiss::utils::fvec_inner_product(first.as_raw_slice(), second.as_raw_slice()) as VectorDistance
+    }
+    #[cfg(not(feature = "faiss"))]
+    {
+        inner_product_trivial(first, second)
+    }
 }
 
 impl<'a> MeasureDistance for InnerProductDistanceMeasure<'a> {
     fn measure(&self, other: VectorRef<'_>) -> VectorDistance {
-        -inner_product_faiss(self.0, other)
+        -inner_product(self.0, other)
     }
 }
 
@@ -330,14 +351,14 @@ mod tests {
             let v2 = gen_vector_for_test(128);
             let trivial = inner_product_trivial(v1.to_ref(), v2.to_ref());
             assert_eq_float!(inner_product_simd(v1.to_ref(), v2.to_ref()), trivial);
-            assert_eq_float!(inner_product_faiss(v1.to_ref(), v2.to_ref()), trivial);
+            assert_eq_float!(inner_product(v1.to_ref(), v2.to_ref()), trivial);
             assert_eq_float!(
                 l2sqr_trivial(v1.to_ref(), v2.to_ref()),
-                l2sqr_faiss(v1.to_ref(), v2.to_ref())
+                l2_squared_distance(v1.to_ref(), v2.to_ref())
             );
             assert_eq_float!(
                 l1_trivial(v1.to_ref(), v2.to_ref()),
-                l1_faiss(v1.to_ref(), v2.to_ref())
+                l1_distance(v1.to_ref(), v2.to_ref())
             );
         }
     }

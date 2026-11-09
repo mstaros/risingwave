@@ -77,6 +77,7 @@ pub mod config;
 pub mod constants;
 pub mod field_generator;
 pub mod gap_fill;
+#[cfg(feature = "java")]
 pub mod global_jvm;
 pub mod hash;
 pub mod id {

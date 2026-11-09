@@ -32,10 +32,11 @@ feature_gated_sink_mod!(google_pubsub, GooglePubSub, "google_pubsub");
 feature_gated_sink_mod!(lancedb, LanceDb, "lancedb");
 pub mod http;
 pub mod iceberg;
-pub mod kafka;
+feature_gated_sink_mod!(kafka, Kafka, "kafka", "kafka");
 pub mod kinesis;
 use risingwave_common::bail;
 use risingwave_pb::stream_plan::PbSinkSchemaChange;
+#[cfg(feature = "java")]
 pub mod jdbc_jni_client;
 pub mod log_store;
 pub mod mock_coordination_client;
@@ -45,8 +46,27 @@ pub mod nats;
 pub mod postgres;
 pub mod pulsar;
 pub mod redis;
+#[cfg(feature = "java")]
 pub mod remote;
+#[cfg(not(feature = "java"))]
+pub mod remote {
+    use super::utils::feature_gated_sink_mod;
+    feature_gated_sink_mod!(jdbc, Jdbc, "jdbc", "java");
+    feature_gated_sink_mod!(cassandra, Cassandra, "cassandra", "java");
+    pub use cassandra::CassandraSink;
+    pub use jdbc::JdbcSink;
+}
+#[cfg(feature = "java")]
 pub mod snowflake_redshift;
+#[cfg(not(feature = "java"))]
+pub mod snowflake_redshift {
+    use super::utils::feature_gated_sink_mod;
+    feature_gated_sink_mod!(snowflake, SnowflakeV2, "snowflake_v2", "java");
+    feature_gated_sink_mod!(redshift_disabled, Redshift, "redshift", "java");
+    pub mod redshift {
+        pub use super::redshift_disabled::{RedshiftConfig as RedShiftConfig, RedshiftSink};
+    }
+}
 pub mod sqlserver;
 feature_gated_sink_mod!(starrocks, "starrocks");
 pub mod test_sink;
@@ -118,7 +138,10 @@ use crate::sink::catalog::{SinkCatalog, SinkId};
 use crate::sink::decouple_checkpoint_log_sink::ICEBERG_DEFAULT_COMMIT_CHECKPOINT_INTERVAL;
 use crate::sink::file_sink::fs::FsSink;
 use crate::sink::log_store::{LogReader, LogStoreReadItem, LogStoreResult, TruncateOffset};
+#[cfg(feature = "java")]
 use crate::sink::snowflake_redshift::snowflake::SNOWFLAKE_SINK_V2;
+#[cfg(not(feature = "java"))]
+use crate::sink::snowflake_redshift::snowflake::SNOWFLAKE_V2_SINK as SNOWFLAKE_SINK_V2;
 use crate::sink::utils::feature_gated_sink_mod;
 use crate::{WithPropertiesExt, connector_metrics_level};
 
@@ -1103,6 +1126,7 @@ pub type Result<T> = std::result::Result<T, SinkError>;
 
 #[derive(Error, Debug)]
 pub enum SinkError {
+    #[cfg(feature = "kafka")]
     #[error("Kafka error: {0}")]
     Kafka(#[from] rdkafka::error::KafkaError),
     #[error("Kinesis error: {0}")]
@@ -1377,12 +1401,15 @@ mod tests {
         let report = err.to_report_string();
         assert!(report.contains("bogus_with"), "{report}");
 
-        let err = crate::sink::kafka::KafkaConfig::from_btreemap(btreemap([
-            (CONNECTOR_TYPE_KEY, "kafka"),
-            (SINK_TYPE_OPTION, SINK_TYPE_APPEND_ONLY),
-        ]))
-        .unwrap_err();
-        assert!(err.to_report_string().contains("missing field `topic`"));
+        #[cfg(feature = "kafka")]
+        {
+            let err = crate::sink::kafka::KafkaConfig::from_btreemap(btreemap([
+                (CONNECTOR_TYPE_KEY, "kafka"),
+                (SINK_TYPE_OPTION, SINK_TYPE_APPEND_ONLY),
+            ]))
+            .unwrap_err();
+            assert!(err.to_report_string().contains("missing field `topic`"));
+        }
     }
 
     #[test]

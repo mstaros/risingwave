@@ -21,18 +21,27 @@ use crate::connector_common::{AwsAuthProps, KafkaConnectionProps, KafkaPrivateLi
 use crate::enforce_secret::EnforceSecret;
 use crate::error::ConnectorResult;
 
+#[cfg(feature = "kafka")]
 mod client_context;
+#[cfg(feature = "kafka")]
 pub mod enumerator;
 pub mod private_link;
+#[cfg(feature = "kafka")]
 pub mod source;
 pub mod split;
+#[cfg(feature = "kafka")]
 pub mod stats;
 
+#[cfg(feature = "kafka")]
 pub use client_context::*;
+#[cfg(feature = "kafka")]
 pub use enumerator::*;
 use risingwave_common::id::FragmentId;
+#[cfg(feature = "kafka")]
 pub use source::*;
 pub use split::*;
+#[cfg(not(feature = "kafka"))]
+pub use disabled::{KafkaSplitEnumerator, KafkaSplitReader};
 use with_options::WithOptions;
 
 use crate::connector_common::{KafkaCommon, RdKafkaPropertiesCommon};
@@ -213,6 +222,7 @@ impl crate::source::UnknownFields for KafkaProperties {
 }
 
 impl KafkaProperties {
+    #[cfg(feature = "kafka")]
     pub fn set_client(&self, c: &mut rdkafka::ClientConfig) {
         self.rdkafka_properties_common.set_client(c);
         self.rdkafka_properties_consumer.set_client(c);
@@ -227,9 +237,11 @@ impl KafkaProperties {
     }
 }
 
+#[cfg(feature = "kafka")]
 const KAFKA_ISOLATION_LEVEL: &str = "read_committed";
 
 impl RdKafkaPropertiesConsumer {
+    #[cfg(feature = "kafka")]
     pub fn set_client(&self, c: &mut rdkafka::ClientConfig) {
         if let Some(v) = &self.queued_min_messages {
             c.set("queued.min.messages", v.to_string());
@@ -261,7 +273,7 @@ impl RdKafkaPropertiesConsumer {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "kafka"))]
 mod test {
     use std::collections::BTreeMap;
 
@@ -371,5 +383,81 @@ mod test {
             "broker1".to_owned() => "10.0.0.1:8001".to_owned()
         };
         assert_eq!(props.privatelink_common.broker_rewrite_map, Some(hashmap));
+    }
+}
+
+#[cfg(not(feature = "kafka"))]
+mod disabled {
+    use async_trait::async_trait;
+
+    use super::{KafkaProperties, KafkaSplit};
+    use crate::error::{ConnectorError, ConnectorResult};
+    use crate::parser::ParserConfig;
+    use crate::source::{
+        BoxSourceChunkStream, Column, SourceContextRef, SourceEnumeratorContextRef,
+        SplitEnumerator, SplitReader,
+    };
+
+    fn err_feature_not_enabled() -> ConnectorError {
+        anyhow::anyhow!("Kafka support requires a build with the `kafka` feature").into()
+    }
+
+    pub struct KafkaSplitEnumerator {
+        _private: (),
+    }
+
+    #[async_trait]
+    impl SplitEnumerator for KafkaSplitEnumerator {
+        type Properties = KafkaProperties;
+        type Split = KafkaSplit;
+
+        async fn new(
+            _properties: Self::Properties,
+            _context: SourceEnumeratorContextRef,
+        ) -> ConnectorResult<Self> {
+            Err(err_feature_not_enabled())
+        }
+
+        async fn list_splits(&mut self) -> ConnectorResult<Vec<Self::Split>> {
+            Err(err_feature_not_enabled())
+        }
+    }
+
+    impl KafkaSplitEnumerator {
+        pub async fn list_splits_batch(
+            &mut self,
+            _expect_start_timestamp_millis: Option<i64>,
+            _expect_stop_timestamp_millis: Option<i64>,
+        ) -> ConnectorResult<Vec<KafkaSplit>> {
+            Err(err_feature_not_enabled())
+        }
+
+        pub async fn check_reachability(&self) -> ConnectorResult<()> {
+            Err(err_feature_not_enabled())
+        }
+    }
+
+    pub struct KafkaSplitReader {
+        _private: (),
+    }
+
+    #[async_trait]
+    impl SplitReader for KafkaSplitReader {
+        type Properties = KafkaProperties;
+        type Split = KafkaSplit;
+
+        async fn new(
+            _properties: Self::Properties,
+            _splits: Vec<Self::Split>,
+            _parser_config: ParserConfig,
+            _source_ctx: SourceContextRef,
+            _columns: Option<Vec<Column>>,
+        ) -> ConnectorResult<Self> {
+            Err(err_feature_not_enabled())
+        }
+
+        fn into_stream(self) -> BoxSourceChunkStream {
+            Box::pin(futures::stream::once(async { Err(err_feature_not_enabled()) }))
+        }
     }
 }

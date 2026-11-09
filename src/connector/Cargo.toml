@@ -11,11 +11,15 @@ repository = { workspace = true }
 ignored = []
 
 [features]
-default = []
+java = ["dep:jni", "dep:risingwave_jni_core", "risingwave_common/java"]
+default = ["java", "kafka", "faiss"]
+kafka = ["dep:rdkafka", "dep:aws-msk-iam-sasl-signer"]
+faiss = ["risingwave_common/faiss"]
 test = []
 all-sinks = ["all-sinks-lite", "all-sinks-heavy"]
 all-sinks-heavy = ["sink-lancedb"]
 all-sinks-lite = [
+    "kafka",
     "sink-bigquery",
     "sink-deltalake",
     "sink-google_pubsub",
@@ -23,7 +27,7 @@ all-sinks-lite = [
     "sink-doris",
     "sink-starrocks",
 ]
-all-sources = ["source-adbc_snowflake"]
+all-sources = ["kafka", "source-adbc_snowflake"]
 source-adbc_snowflake = ["dep:adbc_core", "dep:adbc_snowflake"]
 sink-bigquery = [
     "dep:gcp-bigquery-client",
@@ -53,7 +57,7 @@ auto_impl = "1"
 await-tree = { workspace = true }
 aws-config = { workspace = true }
 aws-credential-types = { workspace = true }
-aws-msk-iam-sasl-signer = "1.0.1"
+aws-msk-iam-sasl-signer = { version = "1.0.1", optional = true }
 aws-sdk-dynamodb = { workspace = true }
 aws-sdk-glue = { workspace = true }
 aws-sdk-kinesis = { workspace = true }
@@ -98,7 +102,7 @@ iceberg-catalog-rest = { workspace = true }
 iceberg-storage-opendal = { workspace = true }
 indexmap = { workspace = true }
 itertools = { workspace = true }
-jni = { workspace = true }
+jni = { workspace = true, optional = true }
 lance = { workspace = true, optional = true }
 lance-table = { workspace = true, optional = true }
 lancedb = { workspace = true, optional = true }
@@ -137,7 +141,7 @@ pulsar = { version = "6.7", default-features = false, features = [
     "zstd",
 ] }
 rand = { workspace = true }
-rdkafka = { workspace = true, features = [
+rdkafka = { workspace = true, optional = true, features = [
     "cmake-build",
     "ssl",
     "gssapi",
@@ -162,7 +166,7 @@ risingwave_common = { workspace = true }
 risingwave_common_estimate_size = { workspace = true }
 risingwave_common_rate_limit = { workspace = true }
 risingwave_connector_codec = { workspace = true }
-risingwave_jni_core = { workspace = true }
+risingwave_jni_core = { workspace = true, optional = true }
 risingwave_pb = { workspace = true }
 risingwave_rpc_client = { workspace = true }
 rumqttc = { version = "0.25.0", features = ["url"] }
@@ -220,12 +224,8 @@ workspace-hack = { path = "../workspace-hack" }
 [dev-dependencies]
 assert_matches = "1"
 criterion = { workspace = true, features = ["async_tokio", "async"] }
-deltalake = { workspace = true }
 expect-test = "1"
 fs-err = "3"
-lance = { workspace = true }
-lance-table = { workspace = true }
-lancedb = { workspace = true }
 mysql_async = { workspace = true, features = ["binlog"] }
 paste = "1"
 pretty_assertions = "1"

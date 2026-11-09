@@ -55,7 +55,7 @@ pub trait MeasureDistanceBuilder {
     }
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
+#[cfg_attr(all(not(test), feature = "faiss"), expect(dead_code))]
 fn l2_norm_trivial(vec: &VectorInner<impl AsRef<[VectorItemType]>>) -> f32 {
     vec.inner
         .as_ref()
@@ -65,6 +65,7 @@ fn l2_norm_trivial(vec: &VectorInner<impl AsRef<[VectorItemType]>>) -> f32 {
         .sqrt()
 }
 
+#[cfg(feature = "faiss")]
 fn l2_norm_faiss(vec: &VectorInner<impl AsRef<[VectorItemType]>>) -> f32 {
     faiss::utils::fvec_norm_l2sqr(F32::inner_slice(vec.inner.as_ref())).sqrt()
 }
@@ -83,7 +84,14 @@ impl<T: AsRef<[VectorItemType]>> VectorInner<T> {
     }
 
     pub fn l2_norm(&self) -> f32 {
-        l2_norm_faiss(self)
+        #[cfg(feature = "faiss")]
+        {
+            l2_norm_faiss(self)
+        }
+        #[cfg(not(feature = "faiss"))]
+        {
+            l2_norm_trivial(self)
+        }
     }
 
     pub fn normalized(&self) -> VectorVal {
@@ -148,6 +156,7 @@ pub fn decode_vector_payload(vector_item_count: usize, mut buf: impl Buf) -> Vec
 #[cfg(test)]
 mod tests {
     use crate::array::VectorVal;
+    #[cfg(feature = "faiss")]
     use crate::vector::{l2_norm_faiss, l2_norm_trivial};
 
     #[test]
@@ -159,6 +168,7 @@ mod tests {
         };
 
         assert_eq!(vec.l2_norm(), (v1_1.powi(2) + v1_2.powi(2)).sqrt());
+        #[cfg(feature = "faiss")]
         assert_eq!(l2_norm_faiss(&vec), l2_norm_trivial(&vec));
 
         let normalized_vec = VectorVal::from_iter(

@@ -31,6 +31,7 @@ use risingwave_common::{
 };
 
 use crate::connector_metrics_level;
+#[cfg(feature = "kafka")]
 use crate::source::kafka::stats::RdKafkaStats;
 
 /// Low-cardinality connector ack failure categories.
@@ -186,6 +187,7 @@ pub struct SourceMetrics {
     pub latest_message_id: RelabeledAggregatedIntGaugeVec,
     pub partition_eof_count: LabelGuardedIntCounterVec,
     pub partition_eof_offset: LabelGuardedIntGaugeVec,
+    #[cfg(feature = "kafka")]
     pub rdkafka_native_metric: Arc<RdKafkaStats>,
 
     pub direct_cdc_event_lag_latency: LabelGuardedHistogramVec,
@@ -301,6 +303,7 @@ impl SourceMetrics {
         let direct_cdc_event_lag_latency =
             register_guarded_histogram_vec_with_registry!(opts, &["table_name"], registry).unwrap();
 
+        #[cfg(feature = "kafka")]
         let rdkafka_native_metric = Arc::new(RdKafkaStats::new(registry.clone()));
 
         let file_source_input_row_count = register_guarded_int_counter_vec_with_registry!(
@@ -389,6 +392,7 @@ impl SourceMetrics {
             latest_message_id,
             partition_eof_count,
             partition_eof_offset,
+            #[cfg(feature = "kafka")]
             rdkafka_native_metric,
             direct_cdc_event_lag_latency,
             parquet_source_skip_row_count,

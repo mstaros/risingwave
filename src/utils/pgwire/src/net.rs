@@ -14,17 +14,20 @@
 
 use std::io;
 use std::net::SocketAddr as IpSocketAddr;
-#[cfg(madsim)]
+#[cfg(all(unix, madsim))]
 use std::os::unix::net::SocketAddr as UnixSocketAddr;
 use std::sync::Arc;
 
-#[cfg(not(madsim))]
+#[cfg(all(unix, not(madsim)))]
 use tokio::net::unix::SocketAddr as UnixSocketAddr;
-use tokio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
+use tokio::net::{TcpListener, TcpStream};
+#[cfg(unix)]
+use tokio::net::{UnixListener, UnixStream};
 
 /// A wrapper of either [`TcpListener`] or [`UnixListener`].
 pub(crate) enum Listener {
     Tcp(TcpListener),
+    #[cfg(unix)]
     Unix(UnixListener),
 }
 
@@ -32,12 +35,14 @@ pub(crate) enum Listener {
 #[auto_enums::enum_derive(tokio1::AsyncRead, tokio1::AsyncWrite)]
 pub(crate) enum Stream {
     Tcp(TcpStream),
+    #[cfg(unix)]
     Unix(UnixStream),
 }
 
 /// A wrapper of either [`std::net::SocketAddr`] or [`tokio::net::unix::SocketAddr`].
 pub enum Address {
     Tcp(IpSocketAddr),
+    #[cfg(unix)]
     Unix(UnixSocketAddr),
 }
 
@@ -47,6 +52,7 @@ impl std::fmt::Display for Address {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Address::Tcp(addr) => addr.fmt(f),
+            #[cfg(unix)]
             Address::Unix(addr) => {
                 if let Some(path) = addr.as_pathname() {
                     path.display().fmt(f)
@@ -65,10 +71,18 @@ impl Listener {
     /// Otherwise, it will create a [`TcpListener`].
     pub async fn bind(addr: &str) -> io::Result<Self> {
         if let Some(path) = addr.strip_prefix("unix:") {
-            UnixListener::bind(path).map(Self::Unix)
-        } else {
-            TcpListener::bind(addr).await.map(Self::Tcp)
+            #[cfg(unix)]
+            return UnixListener::bind(path).map(Self::Unix);
+            #[cfg(not(unix))]
+            {
+                let _ = path;
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "Unix socket listeners are unavailable on this platform; use a TCP address",
+                ));
+            }
         }
+        TcpListener::bind(addr).await.map(Self::Tcp)
     }
 
     /// Accepts a new incoming connection from this listener.
@@ -88,6 +102,7 @@ impl Listener {
                 }
                 Ok((Stream::Tcp(stream), Address::Tcp(addr)))
             }
+            #[cfg(unix)]
             Self::Unix(listener) => {
                 let (stream, addr) = listener.accept().await?;
                 Ok((Stream::Unix(stream), Address::Unix(addr)))

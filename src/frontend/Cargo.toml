@@ -8,10 +8,19 @@ license = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = []
+kafka = [
+    "risingwave_connector/kafka",
+]
+faiss = [
+    "risingwave_common/faiss",
+    "risingwave_connector/faiss",
+    "risingwave_storage/faiss",
+]
+java = ["risingwave_common/java", "risingwave_connector/java"]
+default = ["java", "kafka", "faiss"]
 datafusion = ["dep:datafusion", "dep:datafusion-common"]
 datafusion-backtrace = ["datafusion", "datafusion/backtrace", "datafusion-common/backtrace"]
-all-sources = ["source-adbc_snowflake"]
+all-sources = ["kafka", "source-adbc_snowflake"]
 source-adbc_snowflake = ["risingwave_connector/source-adbc_snowflake"]
 
 [dependencies]

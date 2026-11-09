@@ -22,4 +22,5 @@ pub use standalone::*;
 
 risingwave_batch_executors::enable!();
 risingwave_expr_impl::enable!();
+#[cfg(feature = "java")]
 risingwave_jni_core::enable!();

@@ -19,8 +19,11 @@ use anyhow::Context;
 use opendal::Operator;
 use opendal::services::{Azblob, Gcs, S3};
 use phf::{Set, phf_set};
+#[cfg(feature = "kafka")]
 use rdkafka::ClientConfig;
+#[cfg(feature = "kafka")]
 use rdkafka::config::RDKafkaLogLevel;
+#[cfg(feature = "kafka")]
 use rdkafka::consumer::{BaseConsumer, Consumer};
 use risingwave_common::bail;
 use risingwave_common::secret::LocalSecretManager;
@@ -42,6 +45,7 @@ use crate::error::ConnectorResult;
 use crate::schema::schema_registry::Client as ConfluentSchemaRegistryClient;
 use crate::sink::elasticsearch_opensearch::elasticsearch_opensearch_config::ElasticSearchOpenSearchConfig;
 use crate::source::build_connection;
+#[cfg(feature = "kafka")]
 use crate::source::kafka::{KafkaContextCommon, RwConsumerContext};
 
 pub const SCHEMA_REGISTRY_CONNECTION_TYPE: &str = "schema_registry";
@@ -95,13 +99,21 @@ pub async fn validate_connection(connection: &PbConnection) -> ConnectorResult<(
 #[async_trait]
 impl Connection for KafkaConnection {
     async fn validate_connection(&self) -> ConnectorResult<()> {
-        let client = self.build_client().await?;
-        // describe cluster here
-        client.fetch_metadata(None, Duration::from_secs(10)).await?;
-        Ok(())
+        #[cfg(feature = "kafka")]
+        {
+            let client = self.build_client().await?;
+            // describe cluster here
+            client.fetch_metadata(None, Duration::from_secs(10)).await?;
+            Ok(())
+        }
+        #[cfg(not(feature = "kafka"))]
+        {
+            bail!("Kafka support requires a build with the `kafka` feature");
+        }
     }
 }
 
+#[cfg(feature = "kafka")]
 pub fn read_kafka_log_level() -> Option<RDKafkaLogLevel> {
     let log_level = std::env::var("RISINGWAVE_KAFKA_LOG_LEVEL").ok()?;
     match log_level.to_uppercase().as_str() {
@@ -117,6 +129,7 @@ pub fn read_kafka_log_level() -> Option<RDKafkaLogLevel> {
     }
 }
 
+#[cfg(feature = "kafka")]
 impl KafkaConnection {
     async fn build_client(&self) -> ConnectorResult<BaseConsumer<RwConsumerContext>> {
         let mut config = ClientConfig::new();

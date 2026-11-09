@@ -15,6 +15,7 @@
 use std::cmp::{max, min};
 use std::marker::PhantomData;
 
+#[cfg(feature = "faiss")]
 use faiss::index::hnsw::Hnsw;
 use itertools::Itertools;
 use rand::Rng;
@@ -376,6 +377,7 @@ impl<M: MeasureDistanceBuilder, R: Rng> HnswBuilder<InMemoryVectorStore, HnswGra
         }
     }
 
+    #[cfg(feature = "faiss")]
     pub fn with_faiss_hnsw(self, faiss_hnsw: Hnsw<'_>) -> Self {
         assert_eq!(self.vector_store.len(), faiss_hnsw.levels_raw().len());
         let (entry_point, _max_level) = faiss_hnsw.entry_point().unwrap();
@@ -718,6 +720,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use bytes::Bytes;
+    #[cfg(feature = "faiss")]
     use faiss::{ConcurrentIndex, Index, MetricType};
     use futures::executor::block_on;
     use itertools::Itertools;
@@ -793,7 +796,7 @@ mod tests {
     const EF_SEARCH_LIST: &[usize] = &[16];
     // const EF_SEARCH_LIST: &'static [usize] = &[16, 30, 100];
 
-    #[cfg(not(madsim))]
+    #[cfg(all(not(madsim), feature = "faiss"))]
     #[tokio::test]
     async fn test_hnsw_basic() {
         let input = (0..INPUT_COUNT)

@@ -25,6 +25,7 @@ use risingwave_common::bitmap::Bitmap;
 use risingwave_common::config::{MetricLevel, ServerConfig};
 use risingwave_common_heap_profiling::ProfileServiceImpl;
 use risingwave_hummock_sdk::HummockSstableObjectId;
+#[cfg(feature = "java")]
 use risingwave_jni_core::jvm_runtime::dump_jvm_stack_traces;
 use risingwave_pb::monitor_service::monitor_service_server::MonitorService;
 use risingwave_pb::monitor_service::stack_trace_request::ActorTracesFormat;
@@ -162,6 +163,9 @@ impl MonitorService for MonitorServiceImpl {
 
         let barrier_worker_state = self.stream_mgr.inspect_barrier_state().await?;
 
+        #[cfg(not(feature = "java"))]
+        let jvm_stack_traces: Option<String> = None;
+        #[cfg(feature = "java")]
         let jvm_stack_traces = match dump_jvm_stack_traces() {
             Ok(None) => None,
             Err(err) => Some(err.as_report().to_string()),

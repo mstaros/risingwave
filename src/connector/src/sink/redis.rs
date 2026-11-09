@@ -639,7 +639,6 @@ impl AsyncTruncateSinkWriter for RedisSinkWriter {
 mod test {
     use core::panic;
 
-    use rdkafka::message::FromBytes;
     use risingwave_common::array::{Array, I32Array, Op, Utf8Array};
     use risingwave_common::catalog::Field;
     use risingwave_common::types::DataType;
@@ -731,7 +730,7 @@ mod test {
                 .zip_eq_debug(expected_a.clone())
                 .for_each(|((i, cmd), (exp_i, exp_cmd))| {
                     if exp_i == i {
-                        assert_eq!(exp_cmd, str::from_bytes(&cmd.get_packed_command()).unwrap())
+                        assert_eq!(exp_cmd, std::str::from_utf8(&cmd.get_packed_command()).unwrap())
                     }
                 });
         } else {
@@ -806,7 +805,7 @@ mod test {
                 .zip_eq_debug(expected_a.clone())
                 .for_each(|((i, cmd), (exp_i, exp_cmd))| {
                     if exp_i == i {
-                        assert_eq!(exp_cmd, str::from_bytes(&cmd.get_packed_command()).unwrap())
+                        assert_eq!(exp_cmd, std::str::from_utf8(&cmd.get_packed_command()).unwrap())
                     }
                 });
         } else {
