@@ -60,7 +60,11 @@ async fn standalone_executes_streaming_sql() {
         .map(|listener| listener.local_addr().unwrap())
         .collect();
     let (meta, compute, sql, frontend_rpc, webhook) = (
-        addresses[0], addresses[1], addresses[2], addresses[3], addresses[4],
+        addresses[0],
+        addresses[1],
+        addresses[2],
+        addresses[3],
+        addresses[4],
     );
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(
@@ -122,15 +126,39 @@ async fn standalone_executes_streaming_sql() {
         };
         let connection = tokio::spawn(connection);
         client
+            .batch_execute("CREATE TABLE windows_smoke (id INT PRIMARY KEY, v INT);")
+            .await?;
+        // The SQL listener can start before its compute-worker view is ready.
+        // Probe a read instead of retrying writes that may already have taken effect.
+        loop {
+            match client
+                .query("SELECT id FROM windows_smoke LIMIT 1", &[])
+                .await
+            {
+                Ok(_) => break,
+                Err(error)
+                    if error.as_db_error().is_some_and(|error| {
+                        let message = error.message();
+                        message.contains("No worker node found for worker slot id:")
+                            || message.contains("Empty workers found")
+                    }) =>
+                {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        client
             .batch_execute(
-                "CREATE TABLE windows_smoke (id INT PRIMARY KEY, v INT);
-                 CREATE MATERIALIZED VIEW windows_total AS
+                "CREATE MATERIALIZED VIEW windows_total AS
                      SELECT SUM(v) AS total FROM windows_smoke;
                  INSERT INTO windows_smoke VALUES (1, 10), (2, 20);
                  FLUSH;",
             )
             .await?;
-        let row = client.query_one("SELECT total FROM windows_total", &[]).await?;
+        let row = client
+            .query_one("SELECT total FROM windows_total", &[])
+            .await?;
         assert_eq!(row.get::<_, i64>(0), 30);
 
         client
@@ -140,7 +168,9 @@ async fn standalone_executes_streaming_sql() {
                  FLUSH;",
             )
             .await?;
-        let row = client.query_one("SELECT total FROM windows_total", &[]).await?;
+        let row = client
+            .query_one("SELECT total FROM windows_total", &[])
+            .await?;
         assert_eq!(row.get::<_, i64>(0), 15);
         drop(client);
         connection.await??;

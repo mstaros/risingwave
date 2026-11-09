@@ -181,9 +181,12 @@ impl ClusterController {
         // Always notify because a running worker's property may have been changed.
         if worker.r#type() == PbWorkerType::ComputeNode || worker.r#type() == PbWorkerType::Frontend
         {
-            self.env
+            // Buffered worker changes must be newer than the worker snapshot version.
+            let _ = self
+                .env
                 .notification_manager()
-                .notify_frontend_without_version(Operation::Add, Info::Node(worker.clone()));
+                .notify_frontend(Operation::Add, Info::Node(worker.clone()))
+                .await;
         }
         self.env
             .notification_manager()
@@ -193,14 +196,18 @@ impl ClusterController {
     }
 
     pub async fn delete_worker(&self, host_address: HostAddress) -> MetaResult<WorkerNode> {
-        let worker = self.inner.write().await.delete_worker(host_address).await?;
+        let mut inner = self.inner.write().await;
+        let worker = inner.delete_worker(host_address).await?;
 
         if worker.r#type() == PbWorkerType::ComputeNode || worker.r#type() == PbWorkerType::Frontend
         {
-            self.env
+            let _ = self
+                .env
                 .notification_manager()
-                .notify_frontend_without_version(Operation::Delete, Info::Node(worker.clone()));
+                .notify_frontend(Operation::Delete, Info::Node(worker.clone()))
+                .await;
         }
+        drop(inner);
 
         // Keep license manager in sync with the latest cluster resource.
         self.update_cluster_resource_for_license().await?;
@@ -983,6 +990,64 @@ mod tests {
                 port: 5000 + i as i32,
             })
             .collect_vec()
+    }
+
+    #[tokio::test]
+    async fn test_worker_node_notifications_follow_snapshot_version() -> MetaResult<()> {
+        let env = MetaSrvEnv::for_test().await;
+        let cluster_ctl = ClusterController::new(env.clone(), Duration::from_secs(1)).await?;
+        let host = mock_worker_hosts_for_test(1).pop().unwrap();
+        let worker_id = cluster_ctl
+            .add_worker(
+                PbWorkerType::ComputeNode,
+                host.clone(),
+                AddNodeProperty {
+                    parallelism: 1,
+                    is_streaming: true,
+                    is_serving: true,
+                    ..Default::default()
+                },
+                PbResource::default(),
+            )
+            .await?;
+        let notification_manager = env.notification_manager();
+        let (tx, mut rx) = unbounded_channel();
+        notification_manager.insert_sender(
+            risingwave_pb::meta::SubscribeType::Frontend,
+            WorkerKey(host.clone()),
+            tx,
+        );
+
+        for operation in [Operation::Add, Operation::Delete] {
+            // A frontend only replays buffered node changes newer than its snapshot.
+            let snapshot_version = notification_manager.current_version().await;
+            match operation {
+                Operation::Add => cluster_ctl.activate_worker(worker_id).await?,
+                Operation::Delete => {
+                    cluster_ctl.delete_worker(host.clone()).await?;
+                }
+                _ => unreachable!(),
+            }
+            let notification = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let notification = rx.recv().await.unwrap().unwrap();
+                    if matches!(notification.info, Some(Info::Node(_))) {
+                        break notification;
+                    }
+                }
+            })
+            .await
+            .expect("worker notification should arrive");
+            assert_eq!(notification.operation(), operation);
+            assert!(
+                notification.version > snapshot_version,
+                "worker notification version {} must be newer than snapshot version {}",
+                notification.version,
+                snapshot_version
+            );
+        }
+
+        Ok(())
     }
 
     #[tokio::test]
