@@ -267,3 +267,78 @@ and [#16514](https://github.com/risingwavelabs/risingwave/pull/16514) (Docker ba
 4. Write tests according to the style explained in the previous section.
 
 <!-- That's all?? -->
+
+## Native PostgreSQL CDC without Java
+
+Building with `--no-default-features --features openssl-vendored,rw-static-link`
+selects the native PostgreSQL reader. It embeds the pinned Materialize
+`tokio-postgres` / `postgres-replication` driver and uses RW's existing Rust
+snapshot/backfill and checkpoint machinery. No JVM, Debezium process, or separate
+CDC daemon is needed. Builds with the `java` feature keep the existing connector.
+
+Use the shared-source SQL interface. Every table included in the PostgreSQL
+publication must use `REPLICA IDENTITY FULL`. A publication limited to the tables
+being ingested avoids requiring that setting on unrelated tables:
+
+```sql
+-- Run in the upstream PostgreSQL database with suitable privileges.
+ALTER TABLE public.orders REPLICA IDENTITY FULL;
+CREATE PUBLICATION rw_orders FOR TABLE public.orders;
+```
+
+```sql
+-- Run in RisingWave.
+CREATE SOURCE pg_orders WITH (
+    connector = 'postgres-cdc',
+    hostname = '127.0.0.1',
+    port = '5432',
+    username = 'cdc_reader',
+    password = '<password>',
+    database.name = 'app',
+    schema.name = 'public',
+    publication.name = 'rw_orders',
+    publication.create.enable = 'false',
+    slot.name = 'rw_orders',
+    transactional = 'true'
+);
+
+CREATE TABLE orders (
+    id INT PRIMARY KEY,
+    amount DECIMAL
+) FROM pg_orders TABLE 'public.orders';
+```
+
+The upstream account needs replication and snapshot-read privileges. PostgreSQL
+must allow logical replication connections and have free replication slots/WAL
+senders. PostgreSQL 19 accepts `wal_level=replica` and raises
+`effective_wal_level` when the logical slot is created; earlier versions need
+`wal_level=logical`. If publication creation is enabled and the named publication
+does not exist, RW creates a schema publication (PostgreSQL 15 or later).
+
+This first version uses `pgoutput` protocol 1 and text tuples. Updates become
+delete/insert pairs within the original transaction, preserving primary-key
+changes and unchanged TOAST values. Native offsets are versioned and tied to the
+source and slot; PostgreSQL feedback advances only after a durable RW checkpoint.
+Source rate limiting that splits transactions is rejected in this version.
+A source with old Debezium offsets must be recreated and backfilled. Missing or
+lost slots fail rather than skipping WAL. TRUNCATE, automatic DDL propagation and
+the Java-backed CDC connectors are outside this configuration's scope. Non-finite
+floating-point values are rejected, and custom PostgreSQL types currently use
+their text form; this does not imply full custom-type compatibility.
+
+The Windows integration test creates its own temporary PostgreSQL 19 cluster and
+RW instance on private loopback ports. It exercises snapshot, live I/U/D,
+transactions, primary-key changes, TOAST/decimal values, WAL feedback, and a hard
+RW restart from SQLite/Hummock files:
+
+```powershell
+$env:RW_CDC_TEST_PG_BIN = 'C:\Program Files\PostgreSQL\19\bin'
+cargo test --locked -p risingwave_cmd_all --profile thin-production `
+  --no-default-features --features openssl-vendored,rw-static-link `
+  --test native_postgres_cdc -- --ignored --nocapture --test-threads=1
+```
+
+The test uses only PostgreSQL executables from that directory; it does not connect
+to an existing PostgreSQL service or Docker installation. The normal native build
+prerequisites (MSVC, the repository-pinned Rust toolchain, protoc and the selected
+OpenSSL build/link settings) still apply.

@@ -129,6 +129,11 @@ paste = "1"
 pg_bigdecimal = { git = "https://github.com/risingwavelabs/rust-pg_bigdecimal", rev = "0b7893d88894ca082b4525f94f812da034486f7c" }
 phf = { version = "0.14", features = ["macros"] }
 postgres-openssl = "0.5.0"
+# The replication connection uses Materialize's CopyBoth/pgoutput implementation.
+# Keep the existing madsim PostgreSQL client for SQL queries and snapshot backfill.
+postgres-openssl-replication = { package = "postgres-openssl", git = "https://github.com/MaterializeInc/rust-postgres", rev = "fcca71c8a6ee351eda7b6dfcd607055fa9a6d302" }
+postgres-replication = { git = "https://github.com/MaterializeInc/rust-postgres", rev = "fcca71c8a6ee351eda7b6dfcd607055fa9a6d302" }
+tokio-postgres-replication = { package = "tokio-postgres", git = "https://github.com/MaterializeInc/rust-postgres", rev = "fcca71c8a6ee351eda7b6dfcd607055fa9a6d302" }
 prometheus = { version = "0.14", features = ["process"] }
 prost = { workspace = true, features = ["no-recursion-limit"] }
 prost-013 = { package = "prost", version = "0.13.4" }

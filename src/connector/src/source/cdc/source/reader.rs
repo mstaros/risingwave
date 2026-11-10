@@ -28,6 +28,7 @@ use risingwave_jni_core::{OwnedPointer, call_static_method};
 #[cfg(feature = "java")]
 use risingwave_pb::connector_service::GetEventStreamRequest;
 use risingwave_pb::connector_service::GetEventStreamResponse;
+#[cfg(feature = "java")]
 use thiserror_ext::AsReport;
 use tokio::sync::mpsc;
 
@@ -54,6 +55,8 @@ pub struct CdcSplitReader<T: CdcSourceTypeTrait> {
     parser_config: ParserConfig,
     source_ctx: SourceContextRef,
     rx: mpsc::Receiver<anyhow::Result<GetEventStreamResponse>>,
+    #[cfg(not(feature = "java"))]
+    native_task: super::super::native_postgres::ReaderTask,
 }
 
 #[cfg(feature = "java")]
@@ -73,8 +76,48 @@ impl<T: CdcSourceTypeTrait> SplitReader for CdcSplitReader<T> {
     ) -> ConnectorResult<Self> {
         #[cfg(not(feature = "java"))]
         {
-            let _ = (conn_props, splits, parser_config, source_ctx);
-            bail!("CDC sources require a build with the `java` feature");
+            if !matches!(T::source_type(), CdcSourceType::Postgres) {
+                bail!("This CDC connector requires a build with the java feature");
+            }
+            if splits.len() != 1 {
+                bail!("PostgreSQL CDC requires exactly one split");
+            }
+            if !conn_props.is_cdc_source_job {
+                bail!("native PostgreSQL CDC requires a shared source");
+            }
+            if source_ctx.source_ctrl_opts.split_txn {
+                bail!(
+                    "native PostgreSQL CDC requires whole transactions; disable source rate limiting"
+                );
+            }
+            let split = splits.into_iter().next().unwrap();
+            let source_id = split.split_id() as u64;
+            let timeout = conn_props
+                .properties
+                .get("cdc.source.wait.streaming.start.timeout")
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(60);
+            let (rx, native_task) = tokio::time::timeout(
+                std::time::Duration::from_secs(timeout),
+                super::super::native_postgres::start(
+                    source_id,
+                    &conn_props.properties,
+                    split.start_offset().as_deref(),
+                ),
+            )
+            .await
+            .map_err(|_| anyhow::anyhow!("native PostgreSQL CDC startup timed out"))??;
+            Ok(Self {
+                source_id,
+                start_offset: split.start_offset().clone(),
+                conn_props,
+                split_id: split.id(),
+                snapshot_done: split.snapshot_done(),
+                parser_config,
+                source_ctx,
+                rx,
+                native_task,
+            })
         }
         #[cfg(feature = "java")]
         {
@@ -102,7 +145,9 @@ impl<T: CdcSourceTypeTrait> SplitReader for CdcSplitReader<T> {
                 execute_with_jni_env(jvm, |env| {
                     let result: anyhow::Result<_> = try {
                         let get_event_stream_request_bytes = env
-                            .byte_array_from_slice(&Message::encode_to_vec(&get_event_stream_request))
+                            .byte_array_from_slice(&Message::encode_to_vec(
+                                &get_event_stream_request,
+                            ))
                             .map_err(anyhow::Error::from)?;
                         (env, get_event_stream_request_bytes)
                     };
@@ -200,6 +245,8 @@ impl<T: CdcSourceTypeTrait> SplitReader for CdcSplitReader<T> {
 impl<T: CdcSourceTypeTrait> CdcSplitReader<T> {
     #[try_stream(ok = Vec<SourceMessage>, error = ConnectorError)]
     async fn into_data_stream(self) {
+        #[cfg(not(feature = "java"))]
+        let _native_task = self.native_task;
         let mut rx = self.rx;
         let source_id = self.source_id.to_string();
 

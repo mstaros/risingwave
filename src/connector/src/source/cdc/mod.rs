@@ -17,6 +17,8 @@ pub mod external;
 pub mod jni_source;
 pub mod mongodb;
 pub mod mysql;
+#[cfg(not(feature = "java"))]
+pub(crate) mod native_postgres;
 pub mod oracle;
 pub mod postgres;
 pub mod source;

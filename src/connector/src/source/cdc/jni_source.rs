@@ -22,8 +22,8 @@ use risingwave_jni_core::jvm_runtime::execute_with_jni_env;
 use risingwave_jni_core::{call_method, call_static_method};
 
 #[cfg(not(feature = "java"))]
-pub fn commit_cdc_offset(_source_id: u64, _encoded_offset: String) -> anyhow::Result<()> {
-    anyhow::bail!("CDC offset commits require a build with the `java` feature")
+pub fn commit_cdc_offset(source_id: u64, encoded_offset: String) -> anyhow::Result<()> {
+    super::native_postgres::commit_offset(source_id, &encoded_offset)
 }
 
 #[cfg(feature = "java")]

@@ -12088,7 +12088,7 @@ dependencies = [
  "bytes",
  "num-bigint 0.4.6",
  "num-integer",
- "postgres-types",
+ "postgres-types 0.2.6",
 ]
 
 [[package]]
@@ -12099,7 +12099,7 @@ checksum = "8408fb1e08ebf2e7676d001caa6482d1b33e7e1f1dad9d3a758a05640eea2026"
 dependencies = [
  "bytes",
  "chrono",
- "postgres-types",
+ "postgres-types 0.2.6",
 ]
 
 [[package]]
@@ -12120,7 +12120,7 @@ dependencies = [
  "panic-message",
  "parking_lot 0.12.5",
  "peekable",
- "postgres-types",
+ "postgres-types 0.2.6",
  "rand 0.8.5",
  "reqwest 0.13.4",
  "risingwave_common",
@@ -12136,7 +12136,7 @@ dependencies = [
  "thiserror 2.0.17",
  "thiserror-ext",
  "tokio-openssl",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
  "tracing",
  "url",
  "workspace-hack",
@@ -12483,7 +12483,18 @@ dependencies = [
  "openssl",
  "tokio",
  "tokio-openssl",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
+]
+
+[[package]]
+name = "postgres-openssl"
+version = "0.5.2"
+source = "git+https://github.com/MaterializeInc/rust-postgres?rev=fcca71c8a6ee351eda7b6dfcd607055fa9a6d302#fcca71c8a6ee351eda7b6dfcd607055fa9a6d302"
+dependencies = [
+ "openssl",
+ "tokio",
+ "tokio-openssl",
+ "tokio-postgres 0.7.15",
 ]
 
 [[package]]
@@ -12505,6 +12516,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "postgres-protocol"
+version = "0.6.12"
+source = "git+https://github.com/MaterializeInc/rust-postgres?rev=fcca71c8a6ee351eda7b6dfcd607055fa9a6d302#fcca71c8a6ee351eda7b6dfcd607055fa9a6d302"
+dependencies = [
+ "base64 0.22.1",
+ "byteorder",
+ "bytes",
+ "fallible-iterator 0.2.0",
+ "hmac 0.13.0",
+ "md-5 0.11.0",
+ "memchr",
+ "rand 0.10.1",
+ "sha2 0.11.0",
+ "stringprep",
+]
+
+[[package]]
+name = "postgres-replication"
+version = "0.6.7"
+source = "git+https://github.com/MaterializeInc/rust-postgres?rev=fcca71c8a6ee351eda7b6dfcd607055fa9a6d302#fcca71c8a6ee351eda7b6dfcd607055fa9a6d302"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "futures-util",
+ "memchr",
+ "pin-project-lite",
+ "postgres-protocol 0.6.12 (git+https://github.com/MaterializeInc/rust-postgres?rev=fcca71c8a6ee351eda7b6dfcd607055fa9a6d302)",
+ "postgres-types 0.2.11",
+ "tokio-postgres 0.7.15",
+]
+
+[[package]]
 name = "postgres-types"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12514,10 +12557,20 @@ dependencies = [
  "chrono",
  "fallible-iterator 0.2.0",
  "postgres-derive",
- "postgres-protocol",
+ "postgres-protocol 0.6.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_json",
  "uuid",
+]
+
+[[package]]
+name = "postgres-types"
+version = "0.2.11"
+source = "git+https://github.com/MaterializeInc/rust-postgres?rev=fcca71c8a6ee351eda7b6dfcd607055fa9a6d302#fcca71c8a6ee351eda7b6dfcd607055fa9a6d302"
+dependencies = [
+ "bytes",
+ "fallible-iterator 0.2.0",
+ "postgres-protocol 0.6.12 (git+https://github.com/MaterializeInc/rust-postgres?rev=fcca71c8a6ee351eda7b6dfcd607055fa9a6d302)",
 ]
 
 [[package]]
@@ -14141,7 +14194,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "thiserror-ext",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
  "tokio-stream 0.1.15",
  "tracing",
  "twox-hash",
@@ -14186,7 +14239,7 @@ dependencies = [
  "rw_futures_util",
  "tempfile",
  "tikv-jemallocator",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
  "tokio-stream 0.1.15",
  "tracing",
  "uuid",
@@ -14262,7 +14315,7 @@ dependencies = [
  "tempfile",
  "thiserror-ext",
  "tikv-jemallocator",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
  "tracing",
  "vergen",
  "workspace-config",
@@ -14334,7 +14387,7 @@ dependencies = [
  "parse-display",
  "paste",
  "pin-project-lite",
- "postgres-types",
+ "postgres-types 0.2.6",
  "pretty_assertions",
  "prometheus",
  "prost 0.14.3",
@@ -14713,7 +14766,9 @@ dependencies = [
  "paste",
  "pg_bigdecimal",
  "phf 0.14.0",
- "postgres-openssl",
+ "postgres-openssl 0.5.0",
+ "postgres-openssl 0.5.2",
+ "postgres-replication",
  "pretty_assertions",
  "proc-macro2",
  "prometheus",
@@ -14757,7 +14812,8 @@ dependencies = [
  "thiserror-ext",
  "tiberius",
  "time",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
+ "tokio-postgres 0.7.15",
  "tokio-retry",
  "tokio-stream 0.1.15",
  "tokio-util",
@@ -14880,7 +14936,7 @@ dependencies = [
  "madsim-tokio",
  "pg_interval",
  "rust_decimal",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
  "tracing",
  "tracing-subscriber",
 ]
@@ -15062,7 +15118,7 @@ dependencies = [
  "petgraph 0.8.3",
  "pgwire",
  "pin-project-lite",
- "postgres-types",
+ "postgres-types 0.2.6",
  "pretty-xmlish",
  "pretty_assertions",
  "prometheus",
@@ -15099,7 +15155,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "thiserror-ext",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
  "tokio-stream 0.1.15",
  "toml 1.1.2+spec-1.1.0",
  "tower",
@@ -15682,7 +15738,7 @@ dependencies = [
  "tempfile",
  "tikv-jemallocator",
  "tokio",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -15733,7 +15789,7 @@ dependencies = [
  "similar 3.2.0",
  "strum 0.28.0",
  "thiserror-ext",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
  "tracing",
  "tracing-subscriber",
  "workspace-hack",
@@ -15751,7 +15807,7 @@ dependencies = [
  "risingwave_rt",
  "serde",
  "serde_with",
- "tokio-postgres",
+ "tokio-postgres 0.7.10",
  "tokio-stream 0.1.15",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
@@ -16152,7 +16208,7 @@ dependencies = [
  "borsh",
  "bytes",
  "num-traits",
- "postgres-types",
+ "postgres-types 0.2.6",
  "rand 0.8.5",
  "rkyv",
  "serde",
@@ -18532,10 +18588,35 @@ dependencies = [
  "percent-encoding",
  "phf 0.11.3",
  "pin-project-lite",
- "postgres-protocol",
- "postgres-types",
+ "postgres-protocol 0.6.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "postgres-types 0.2.6",
  "rand 0.8.5",
  "socket2 0.5.10",
+ "tokio-util",
+ "whoami",
+]
+
+[[package]]
+name = "tokio-postgres"
+version = "0.7.15"
+source = "git+https://github.com/MaterializeInc/rust-postgres?rev=fcca71c8a6ee351eda7b6dfcd607055fa9a6d302#fcca71c8a6ee351eda7b6dfcd607055fa9a6d302"
+dependencies = [
+ "async-trait",
+ "byteorder",
+ "bytes",
+ "fallible-iterator 0.2.0",
+ "futures-channel",
+ "futures-util",
+ "log",
+ "parking_lot 0.12.5",
+ "percent-encoding",
+ "phf 0.13.1",
+ "pin-project-lite",
+ "postgres-protocol 0.6.12 (git+https://github.com/MaterializeInc/rust-postgres?rev=fcca71c8a6ee351eda7b6dfcd607055fa9a6d302)",
+ "postgres-types 0.2.11",
+ "rand 0.9.5",
+ "socket2 0.6.5",
+ "tokio",
  "tokio-util",
  "whoami",
 ]

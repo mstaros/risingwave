@@ -22,6 +22,38 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 > If you encounter CMake error when compiling some third-party crates, it may be because the CMake version installed by package manager (ie. `brew/apt`) is too high and is incompatible with old CMake files in these crates. You can first uninstall, then manually download the required version from the [official source](https://cmake.org/download/).
 
+### Windows (compact native build)
+
+Use the x64 MSVC toolchain and the Rust version pinned by `rust-toolchain`.
+The build needs the Visual C++ tools/Windows SDK, CMake, Ninja and protoc.
+Set `PROTOC` and `PROTOC_INCLUDE` when protobuf is not on the build path.
+
+The compact configuration excludes Java/JNI/Debezium, Kafka and FAISS, while
+retaining the Rust vector implementations. PostgreSQL CDC uses an embedded Rust
+replication driver; see [native PostgreSQL CDC](../connector/intro.md#native-postgresql-cdc-without-java).
+
+OpenSSL remains statically linked. To use existing MSVC-compatible static
+OpenSSL headers and libraries, set these in the build shell:
+
+```powershell
+$env:OPENSSL_DIR = '<OpenSSL installation with include and lib directories>'
+$env:OPENSSL_STATIC = '1'
+$env:OPENSSL_NO_VENDOR = '1'
+$env:CMAKE_GENERATOR = 'Ninja'
+$env:CARGO_PROFILE_THIN_PRODUCTION_LTO = 'off'
+cargo build --locked -p risingwave_cmd_all --bin risingwave --profile thin-production `
+  --no-default-features --features openssl-vendored,rw-static-link
+```
+
+Without `OPENSSL_NO_VENDOR`, the vendored OpenSSL build also needs Perl at build
+time. Neither Perl nor OpenSSL DLLs are needed to run the resulting statically
+linked executable. The MSVC runtime must be installed or distributed alongside it.
+
+The executable is `target\thin-production\risingwave.exe`. Disabling LTO bounds
+link-time memory use at the cost of a larger binary. No PostgreSQL server, Docker
+engine, JVM, or monitoring stack is bundled; connect CDC to the upstream database
+you already run.
+
 ### nix shell
 
 If you use nix, you can also enter the nix shell via:

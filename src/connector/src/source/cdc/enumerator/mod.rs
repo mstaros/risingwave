@@ -88,8 +88,29 @@ where
     ) -> ConnectorResult<Self> {
         #[cfg(not(feature = "java"))]
         {
-            let _ = (props, context);
-            return Err(anyhow!("CDC sources require a build with the `java` feature").into());
+            if !matches!(props.get_source_type_pb(), SourceType::Postgres) {
+                return Err(
+                    anyhow!("This CDC connector requires a build with the java feature").into(),
+                );
+            }
+            super::native_postgres::validate_source(
+                &props.properties,
+                props.is_cdc_source_job,
+                props.is_backfill_table,
+            )
+            .await?;
+            Ok(Self {
+                source_id: context.info.source_id,
+                metrics: context.metrics.clone(),
+                pg_cdc_upstream_max_lsn: None,
+                pg_cdc_confirmed_flush_lsn: None,
+                mysql_cdc_binlog_file_seq_min: None,
+                mysql_cdc_binlog_file_seq_max: None,
+                sqlserver_cdc_upstream_min_lsn: None,
+                sqlserver_cdc_upstream_max_lsn: None,
+                properties: Arc::new(props.properties),
+                _phantom: PhantomData,
+            })
         }
         #[cfg(feature = "java")]
         {
@@ -122,8 +143,8 @@ where
                         is_backfill_table: props.is_backfill_table,
                     };
 
-                    let validate_source_request_bytes =
-                        env.byte_array_from_slice(&Message::encode_to_vec(&validate_source_request))?;
+                    let validate_source_request_bytes = env
+                        .byte_array_from_slice(&Message::encode_to_vec(&validate_source_request))?;
 
                     let validate_source_response_bytes = call_static_method!(
                         env,
@@ -133,12 +154,17 @@ where
                     )?;
 
                     let validate_source_response: ValidateSourceResponse = Message::decode(
-                        risingwave_jni_core::to_guarded_slice(&validate_source_response_bytes, env)?
-                            .deref(),
+                        risingwave_jni_core::to_guarded_slice(
+                            &validate_source_response_bytes,
+                            env,
+                        )?
+                        .deref(),
                     )?;
 
                     if let Some(error) = validate_source_response.error {
-                        return Err(anyhow!(error.error_message).context("source validation failed"));
+                        return Err(
+                            anyhow!(error.error_message).context("source validation failed")
+                        );
                     }
 
                     Ok(())
