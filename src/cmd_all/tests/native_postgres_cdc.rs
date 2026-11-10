@@ -243,13 +243,29 @@ async fn native_postgres_snapshot_transactions_toast_and_crash_recovery() {
                 schema.name='public', slot.name='rw_native_test',
                 publication.name='rw_native_test', ssl.mode='disabled',
                 transactional='true'
-             );
-             CREATE TABLE native_orders (
-                id INT PRIMARY KEY, v INT, body VARCHAR, n DECIMAL
-             ) FROM native_pg TABLE 'public.native_orders';",
+             );",
             addresses[0].port()
         )).await?;
+        loop {
+            if pg.query_opt(
+                "SELECT 1 FROM pg_replication_slots WHERE slot_name='rw_native_test' AND active", &[]
+            ).await?.is_some() { break; }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        // This row's WAL record predates the snapshot watermark, but it becomes
+        // visible only after the snapshot. CDC must compare its commit position.
+        let overlap = pg.transaction().await?;
+        overlap.batch_execute("UPDATE public.native_orders SET v=11 WHERE id=1;").await?;
+        client.batch_execute(
+            "CREATE TABLE native_orders (
+                id INT PRIMARY KEY, v INT, body VARCHAR, n DECIMAL
+             ) FROM native_pg TABLE 'public.native_orders';"
+        ).await?;
         await_totals(&client, (2,30), None).await?;
+        overlap.commit().await?;
+        await_totals(&client, (2,31), Some((2,30))).await?;
+        pg.batch_execute("UPDATE public.native_orders SET v=10 WHERE id=1;").await?;
+        await_totals(&client, (2,30), Some((2,31))).await?;
         let effective: String = pg.query_one("SHOW effective_wal_level", &[]).await?.get(0);
         assert_eq!(effective, "logical");
 

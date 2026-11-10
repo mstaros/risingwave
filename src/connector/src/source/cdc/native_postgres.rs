@@ -503,7 +503,9 @@ impl Decoder {
                 "native_pg_slot": self.slot,
                 "sourcePartition": {"server": format!("RW_CDC_{}", self.source_id)},
                 "sourceOffset": {
-                    "lsn": lsn, "lsn_proc": lsn, "lsn_commit": commit_lsn,
+                    // Snapshot visibility follows commit order, not the earlier row WAL record.
+                    "lsn": if kind == CdcMessageType::Data { commit_lsn } else { lsn },
+                    "lsn_proc": lsn, "lsn_commit": commit_lsn,
                     "txId": xid, "last_snapshot_record": true,
                     "native_commit_lsn": durable_lsn,
                 },
@@ -913,6 +915,13 @@ mod tests {
             resume_lsn(&decode_offset(&update.offset).unwrap()).unwrap(),
             200
         );
+        let row_offset =
+            crate::source::cdc::external::postgres::PostgresOffset::parse_debezium_offset(
+                &update.offset,
+            )
+            .unwrap();
+        assert_eq!(row_offset.lsn, 200); // Commit happened after the snapshot watermark.
+        assert_eq!(row_offset.lsn_proc, Some(140)); // Preserve the row order within its transaction.
         assert!(commit_offset(source_id, &update.offset).is_err());
         assert_eq!(checkpoint.acknowledged.load(Ordering::Acquire), 100);
 
