@@ -19,7 +19,9 @@ use std::time::Duration;
 use risingwave_common::config::{
     AsyncStackTraceOption, MetricLevel, RwConfig, extract_storage_memory_config, load_config,
 };
-use risingwave_common::monitor::{GLOBAL_METRICS_REGISTRY, RouterExt, TcpConfig};
+#[cfg(feature = "iceberg-compaction")]
+use risingwave_common::monitor::GLOBAL_METRICS_REGISTRY;
+use risingwave_common::monitor::{RouterExt, TcpConfig};
 use risingwave_common::system_param::local_manager::LocalSystemParamsManager;
 use risingwave_common::system_param::reader::{SystemParamsRead, SystemParamsReader};
 use risingwave_common::telemetry::manager::TelemetryManager;
@@ -184,6 +186,7 @@ pub async fn prepare_start_parameters(
 }
 
 /// Resolves the memory budget dedicated to Iceberg compaction.
+#[cfg(feature = "iceberg-compaction")]
 fn resolve_iceberg_compaction_memory_budget(
     configured_limit_mb: Option<usize>,
     compactor_total_memory_bytes: usize,
@@ -222,10 +225,14 @@ pub async fn compactor_serve(
     );
     info!("> version: {} ({})", RW_VERSION, GIT_SHA);
 
+    #[cfg(feature = "iceberg-compaction")]
     let is_iceberg_compactor = matches!(
         compactor_mode,
         CompactorMode::DedicatedIceberg | CompactorMode::SharedIceberg
     );
+    #[cfg(not(feature = "iceberg-compaction"))]
+    let is_iceberg_compactor = false;
+    #[cfg(feature = "iceberg-compaction")]
     if is_iceberg_compactor && config.server.metrics_level > MetricLevel::Disabled {
         iceberg_storage_opendal::install_prometheus_metrics(&GLOBAL_METRICS_REGISTRY)
             .expect("failed to install Iceberg OpenDAL metrics");
@@ -275,6 +282,7 @@ pub async fn compactor_serve(
         system_params_reader.clone(),
     ))
     .await;
+    #[cfg(feature = "iceberg-compaction")]
     let iceberg_memory_budget_bytes = matches!(compactor_mode, CompactorMode::DedicatedIceberg)
         .then(|| {
             resolve_iceberg_compaction_memory_budget(
@@ -333,6 +341,7 @@ pub async fn compactor_serve(
                 compaction_catalog_manager_ref,
             ),
             CompactorMode::Shared => unreachable!(),
+            #[cfg(feature = "iceberg-compaction")]
             CompactorMode::DedicatedIceberg => {
                 risingwave_storage::hummock::compactor::start_iceberg_compactor(
                     compactor_context.clone(),
@@ -341,6 +350,7 @@ pub async fn compactor_serve(
                         .expect("Iceberg memory budget must be resolved for dedicated startup"),
                 )
             }
+            #[cfg(feature = "iceberg-compaction")]
             CompactorMode::SharedIceberg => unreachable!(),
         },
     ];

@@ -7,11 +7,15 @@ keywords = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
 
+[features]
+default = ["iceberg-compaction"]
+iceberg-compaction = ["risingwave_storage/iceberg-compaction", "dep:iceberg-storage-opendal"]
+
 [dependencies]
 async-trait = "0.1"
 await-tree = { workspace = true }
 clap = { workspace = true }
-iceberg-storage-opendal = { workspace = true }
+iceberg-storage-opendal = { workspace = true, optional = true }
 jsonbb = { workspace = true }
 prost = { workspace = true }
 risingwave_common = { workspace = true }

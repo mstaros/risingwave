@@ -26,6 +26,7 @@ ignored = [
 ]
 
 [features]
+iceberg-compaction = ["risingwave_compactor/iceberg-compaction"]
 kafka = [
     "risingwave_cmd/kafka",
     "risingwave_connector/kafka",
@@ -50,7 +51,7 @@ java = [
     "risingwave_ctl/java",
     "risingwave_frontend/java",
 ]
-default = ["rw-static-link", "all-connectors", "java", "kafka", "faiss"]
+default = ["rw-static-link", "all-connectors", "java", "kafka", "faiss", "iceberg-compaction"]
 rw-static-link = ["workspace-config/rw-static-link"]
 rw-dynamic-link = ["workspace-config/rw-dynamic-link"]
 openssl-vendored = ["workspace-config/openssl-vendored"]

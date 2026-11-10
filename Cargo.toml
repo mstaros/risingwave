@@ -252,7 +252,7 @@ risingwave_common_metrics = { path = "./src/common/metrics" }
 risingwave_common_proc_macro = { path = "./src/common/proc_macro" }
 risingwave_common_rate_limit = { path = "./src/common/rate_limit" }
 risingwave_common_service = { path = "./src/common/common_service" }
-risingwave_compactor = { path = "./src/storage/compactor" }
+risingwave_compactor = { path = "./src/storage/compactor", default-features = false }
 risingwave_compute = { path = "./src/compute", default-features = false }
 risingwave_connector = { path = "./src/connector", default-features = false }
 risingwave_connector_codec = { path = "./src/connector/codec" }

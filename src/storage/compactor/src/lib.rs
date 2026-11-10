@@ -22,7 +22,7 @@ use risingwave_common::config::{AsyncStackTraceOption, MetricLevel, OverrideConf
 use risingwave_common::util::meta_addr::MetaAddressStrategy;
 use risingwave_common::util::resource_util::memory::system_memory_available_bytes;
 use risingwave_common::util::tokio_util::sync::CancellationToken;
-#[cfg(madsim)]
+#[cfg(all(madsim, feature = "iceberg-compaction"))]
 pub use risingwave_storage::hummock::compactor::set_simulated_pk_index_compaction_result;
 
 use crate::server::{compactor_serve, shared_compactor_serve};
@@ -36,9 +36,11 @@ pub enum CompactorMode {
     #[clap(alias = "shared")]
     Shared,
 
+    #[cfg(feature = "iceberg-compaction")]
     #[clap(alias = "dedicated_iceberg")]
     DedicatedIceberg,
 
+    #[cfg(feature = "iceberg-compaction")]
     #[clap(alias = "shared_iceberg")]
     SharedIceberg,
 }
@@ -179,6 +181,7 @@ pub fn start(
             .await;
         }),
 
+        #[cfg(feature = "iceberg-compaction")]
         Some(CompactorMode::DedicatedIceberg) => Box::pin(async move {
             tracing::info!("Iceberg Compactor node options: {:?}", opts);
             tracing::info!("meta address: {}", opts.meta_address.clone());
@@ -205,6 +208,7 @@ pub fn start(
             ))
             .await;
         }),
+        #[cfg(feature = "iceberg-compaction")]
         Some(CompactorMode::SharedIceberg) => {
             unimplemented!("Shared iceberg compactor is not supported yet");
         }

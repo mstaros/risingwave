@@ -30,7 +30,7 @@ rdkafka = { workspace = true }
 risingwave_batch = { workspace = true }
 risingwave_batch_executors = { workspace = true }
 risingwave_common = { workspace = true }
-risingwave_compactor = { workspace = true }
+risingwave_compactor = { workspace = true, features = ["iceberg-compaction"] }
 risingwave_compute = { workspace = true }
 risingwave_connector = { workspace = true }
 risingwave_ctl = { workspace = true }

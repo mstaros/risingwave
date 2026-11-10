@@ -16,6 +16,7 @@ mod block_stream;
 mod compaction_executor;
 mod compaction_filter;
 pub mod compaction_utils;
+#[cfg(feature = "iceberg-compaction")]
 mod iceberg_compaction;
 use risingwave_hummock_sdk::compact_task::{CompactTask, ValidationTask};
 use risingwave_pb::compactor::{DispatchCompactionTaskRequest, dispatch_compaction_task_request};
@@ -24,6 +25,7 @@ use risingwave_pb::hummock::report_compaction_task_request::{
     Event as ReportCompactionTaskEvent, HeartBeat as SharedHeartBeat,
     ReportTask as ReportSharedTask,
 };
+#[cfg(feature = "iceberg-compaction")]
 use risingwave_pb::iceberg_compaction::{
     SubscribeIcebergCompactionEventRequest, SubscribeIcebergCompactionEventResponse,
     subscribe_iceberg_compaction_event_request,
@@ -40,6 +42,7 @@ mod iterator;
 mod shared_buffer_compact;
 pub(super) mod task_progress;
 
+#[cfg(feature = "iceberg-compaction")]
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::marker::PhantomData;
@@ -57,11 +60,13 @@ pub use context::{
 };
 use futures::{StreamExt, pin_mut};
 // Import iceberg compactor runner types from the local `iceberg_compaction` module.
+#[cfg(feature = "iceberg-compaction")]
 use iceberg_compaction::iceberg_compactor_runner::IcebergCompactorRunnerConfigBuilder;
-#[cfg(madsim)]
+#[cfg(all(madsim, feature = "iceberg-compaction"))]
 pub use iceberg_compaction::set_simulated_pk_index_compaction_result;
-#[cfg(madsim)]
+#[cfg(all(madsim, feature = "iceberg-compaction"))]
 use iceberg_compaction::simulated_pk_index_compaction_result;
+#[cfg(feature = "iceberg-compaction")]
 use iceberg_compaction::{
     IcebergPlanCompletion, IcebergTaskExecution, IcebergTaskQueue, IcebergTaskReport,
     IcebergTaskTracker, PushResult, ReportSendResult, build_drained_iceberg_task_report,
@@ -83,6 +88,7 @@ use risingwave_pb::hummock::{
     CompactTaskProgress, PbSstableFilterLayout, PbSstableFilterType, ReportCompactionTaskRequest,
     SubscribeCompactionEventRequest, SubscribeCompactionEventResponse,
 };
+#[cfg(feature = "iceberg-compaction")]
 use risingwave_pb::id::IcebergCompactionTaskId;
 use risingwave_rpc_client::HummockMetaClient;
 pub use shared_buffer_compact::compact;
@@ -95,16 +101,19 @@ pub use self::compaction_utils::{
     check_flush_result,
 };
 pub use self::task_progress::TaskProgress;
+#[cfg(feature = "iceberg-compaction")]
+use super::HummockErrorInner;
 use super::multi_builder::CapacitySplitTableBuilder;
 use super::{
-    GetObjectId, HummockError, HummockErrorInner, HummockResult, ObjectIdManager,
-    SstableBuilderOptions, Xor8FilterBuilder, Xor16FilterBuilder,
+    GetObjectId, HummockError, HummockResult, ObjectIdManager, SstableBuilderOptions,
+    Xor8FilterBuilder, Xor16FilterBuilder,
 };
 use crate::compaction_catalog_manager::{
     CompactionCatalogAgentRef, CompactionCatalogManager, CompactionCatalogManagerRef,
 };
 use crate::hummock::compactor::compaction_utils::calculate_task_parallelism;
 use crate::hummock::compactor::compactor_runner::{compact_and_build_sst, compact_done};
+#[cfg(feature = "iceberg-compaction")]
 use crate::hummock::compactor::iceberg_compaction::TaskKey;
 use crate::hummock::iterator::{Forward, HummockIterator};
 use crate::hummock::{
@@ -126,6 +135,7 @@ struct CompactionLogState {
 }
 
 /// Represents the iceberg compaction task state for logging purposes
+#[cfg(feature = "iceberg-compaction")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct IcebergCompactionLogState {
     running_parallelism: u32,
@@ -398,6 +408,7 @@ impl Compactor {
 /// The background compaction thread that receives compaction tasks from hummock compaction
 /// manager and runs compaction tasks.
 #[must_use]
+#[cfg(feature = "iceberg-compaction")]
 pub fn start_iceberg_compactor(
     compactor_context: CompactorContext,
     hummock_meta_client: Arc<dyn HummockMetaClient>,
@@ -1533,6 +1544,7 @@ fn get_task_progress(
 }
 
 /// Schedule queued tasks if we have capacity
+#[cfg(feature = "iceberg-compaction")]
 fn schedule_queued_tasks(
     task_queue: &mut IcebergTaskQueue,
     compactor_context: &CompactorContext,
@@ -1648,6 +1660,7 @@ fn schedule_queued_tasks(
     }
 }
 
+#[cfg(feature = "iceberg-compaction")]
 fn is_cancelled_iceberg_compaction_error(error: &crate::hummock::HummockError) -> bool {
     matches!(
         error.inner(),
@@ -1655,6 +1668,7 @@ fn is_cancelled_iceberg_compaction_error(error: &crate::hummock::HummockError) -
     )
 }
 
+#[cfg(feature = "iceberg-compaction")]
 fn cancel_iceberg_task(
     task_id: IcebergCompactionTaskId,
     task_queue: &mut IcebergTaskQueue,
@@ -1709,6 +1723,7 @@ fn cancel_iceberg_task(
 
 /// Handle pulling new tasks from meta service
 /// Returns true if the stream should be restarted
+#[cfg(feature = "iceberg-compaction")]
 fn handle_meta_task_pulling(
     pull_task_ack: &mut bool,
     task_queue: &IcebergTaskQueue,
@@ -1780,6 +1795,7 @@ fn handle_meta_task_pulling(
 mod tests {
     use super::*;
 
+    #[cfg(feature = "iceberg-compaction")]
     #[test]
     fn test_cancel_iceberg_task_removes_waiting_plans_and_tracker() {
         let task_id = IcebergCompactionTaskId::new(42);
@@ -1820,6 +1836,7 @@ mod tests {
         assert!(!task_trackers.contains_key(&task_id));
     }
 
+    #[cfg(feature = "iceberg-compaction")]
     #[test]
     fn test_cancel_iceberg_task_shuts_down_running_plans_and_tracker() {
         let task_id = IcebergCompactionTaskId::new(43);
@@ -1858,8 +1875,11 @@ mod tests {
         };
         assert_eq!(state1, state2);
         assert_ne!(state1, state3);
+    }
 
-        // Test IcebergCompactionLogState
+    #[cfg(feature = "iceberg-compaction")]
+    #[test]
+    fn test_iceberg_log_state_equality() {
         let ice_state1 = IcebergCompactionLogState {
             running_parallelism: 10,
             waiting_parallelism: 5,

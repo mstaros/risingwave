@@ -28,8 +28,14 @@ Use the x64 MSVC toolchain and the Rust version pinned by `rust-toolchain`.
 The build needs the Visual C++ tools/Windows SDK, CMake, Ninja and protoc.
 Set `PROTOC` and `PROTOC_INCLUDE` when protobuf is not on the build path.
 
-The compact configuration excludes Java/JNI/Debezium, Kafka and FAISS, while
-retaining the Rust vector implementations. PostgreSQL CDC uses an embedded Rust
+The compact configuration excludes Java/JNI/Debezium, Kafka, FAISS and Iceberg
+compaction (including its DataFusion engine), while retaining the Rust vector
+implementations. Local Hummock compaction remains enabled. Other Iceberg source,
+sink and SQL support is still compiled; this is not an Iceberg-free build.
+Add `iceberg-compaction` to the build features to restore Iceberg compaction and
+its dedicated compactor modes. The default full build includes this feature.
+
+PostgreSQL CDC uses an embedded Rust
 replication driver; see [native PostgreSQL CDC](../connector/intro.md#native-postgresql-cdc-without-java).
 
 OpenSSL remains statically linked. To use existing MSVC-compatible static

@@ -23,6 +23,7 @@ normal = ["workspace-hack", "workspace-config", "task_stats_alloc"]
 test = false
 
 [features]
+iceberg-compaction = ["risingwave_compactor/iceberg-compaction"]
 kafka = [
     "workspace-config/kafka",
     "risingwave_compute/kafka",
@@ -44,7 +45,7 @@ java = [
 rw-static-link = ["workspace-config/rw-static-link"]
 rw-dynamic-link = ["workspace-config/rw-dynamic-link"]
 openssl-vendored = ["workspace-config/openssl-vendored"]
-default = ["rw-static-link", "java", "kafka", "faiss"]
+default = ["rw-static-link", "java", "kafka", "faiss", "iceberg-compaction"]
 fips = ["workspace-config/fips"]
 
 [dependencies]
