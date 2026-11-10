@@ -25,7 +25,7 @@ use futures::StreamExt;
 use itertools::Itertools;
 use pgwire::pg_field_descriptor::PgFieldDescriptor;
 use pgwire::pg_response::StatementType;
-use pgwire::types::{Format, Row};
+use pgwire::types::{Format, FormatIterator, Row};
 use risingwave_batch::task::{ShutdownSender, ShutdownToken};
 use risingwave_common::catalog::{ColumnCatalog, Field};
 use risingwave_common::error::BoxedError;
@@ -286,6 +286,7 @@ impl Display for State {
     }
 }
 
+#[derive(Clone)]
 struct FieldsManager {
     columns_catalog: Vec<ColumnCatalog>,
     // All row fields, including hidden pk, op, rw_timestamp and all non-hidden columns in the upstream table.
@@ -377,16 +378,29 @@ impl FieldsManager {
             .collect()
     }
 
-    // In the beginning (declare cur), we will give it an empty formats,
-    // this formats is not a real, when we fetch, We fill it with the formats returned from the pg client.
+    // Expand client formats against the visible result before adding hidden primary keys.
+    fn get_row_formats(&self, formats: &[Format]) -> Result<Vec<Format>> {
+        let output_formats = FormatIterator::new(formats, self.row_output_col_indices.len())
+            .map_err(ErrorCode::InternalError)?;
+        let mut row_formats = vec![Format::Text; self.row_fields.len()];
+        for (&index, format) in self
+            .row_output_col_indices
+            .iter()
+            .zip_eq_fast(output_formats)
+        {
+            row_formats[index] = format;
+        }
+        Ok(row_formats)
+    }
+
+    // The input formats use the full internal row layout, including op and timestamp.
     pub fn get_row_stream_fields_and_formats(
         &self,
-        formats: &Vec<Format>,
+        formats: &[Format],
         from_snapshot: bool,
     ) -> (Vec<Field>, Vec<Format>) {
         let mut fields = Vec::new();
-        let need_format = !(formats.is_empty() || formats.len() == 1);
-        let mut new_formats = formats.clone();
+        let mut new_formats = Vec::new();
         let stream_chunk_row_indices_iter = if from_snapshot {
             self.stream_chunk_row_indices.iter().chain(None)
         } else {
@@ -396,9 +410,7 @@ impl FieldsManager {
         };
         for index in stream_chunk_row_indices_iter {
             fields.push(self.row_fields[*index].clone());
-            if need_format && !self.row_output_col_indices.contains(index) {
-                new_formats.insert(*index, Format::Text);
-            }
+            new_formats.push(formats[*index]);
         }
         (fields, new_formats)
     }
@@ -529,8 +541,23 @@ impl SubscriptionCursor {
                                     None,
                                 )
                                 .await?;
+                            self.cursor_need_drop_time = Instant::now()
+                                + Duration::from_secs(self.subscription.retention_seconds);
                             let table_schema_changed =
                                 self.fields_manager.try_refill_fields(&catalog);
+                            if table_schema_changed {
+                                // Finish the current FETCH before encoding the new schema. Its
+                                // format list and buffered rows still belong to the previous schema.
+                                self.state = State::Fetch {
+                                    from_snapshot,
+                                    rw_timestamp,
+                                    chunk_stream,
+                                    remaining_rows: VecDeque::new(),
+                                    expected_timestamp,
+                                    init_query_timer,
+                                };
+                                return Ok(None);
+                            }
                             let (fields, formats) = self
                                 .fields_manager
                                 .get_row_stream_fields_and_formats(formats, from_snapshot);
@@ -540,8 +567,6 @@ impl SubscriptionCursor {
                                 handler_args.session.clone(),
                             );
 
-                            self.cursor_need_drop_time = Instant::now()
-                                + Duration::from_secs(self.subscription.retention_seconds);
                             let mut remaining_rows = VecDeque::new();
                             Self::try_refill_remaining_rows(&mut chunk_stream, &mut remaining_rows)
                                 .await?;
@@ -554,9 +579,6 @@ impl SubscriptionCursor {
                                 expected_timestamp,
                                 init_query_timer,
                             };
-                            if table_schema_changed {
-                                return Ok(None);
-                            }
                         }
                         Ok((None, _)) => return Ok(None),
                         Err(e) => {
@@ -647,6 +669,10 @@ impl SubscriptionCursor {
         }
 
         let session = &handler_args.session;
+        // next_row may install a new schema while ending this FETCH. Buffered rows
+        // must retain both the projection and descriptors they were encoded with.
+        let fetch_fields_manager = self.fields_manager.clone();
+        let row_formats = fetch_fields_manager.get_row_formats(formats)?;
         let mut ans = Vec::with_capacity(std::cmp::min(100, count) as usize);
         let mut cur = 0;
         if let State::Fetch {
@@ -655,17 +681,17 @@ impl SubscriptionCursor {
             ..
         } = &mut self.state
         {
-            let (fields, fotmats) = self
+            let (fields, stream_formats) = self
                 .fields_manager
-                .get_row_stream_fields_and_formats(formats, *from_snapshot);
-            chunk_stream.init_row_stream(&fields, &fotmats, session.clone());
+                .get_row_stream_fields_and_formats(&row_formats, *from_snapshot);
+            chunk_stream.init_row_stream(&fields, &stream_formats, session.clone());
         }
         while cur < count {
             if cancel_handle.is_cancelled() {
                 return Err(SchedulerError::QueryCancelled("Cancelled by user".to_owned()).into());
             }
             let fetch_cursor_timer = Instant::now();
-            let row = self.next_row(&handler_args, formats).await?;
+            let row = self.next_row(&handler_args, &row_formats).await?;
             self.cursor_metrics
                 .subscription_cursor_fetch_duration
                 .with_label_values(&[&self.subscription.name])
@@ -681,8 +707,9 @@ impl SubscriptionCursor {
                         break;
                     }
                     let State::InitLogStoreQuery { seek_timestamp, .. } = &self.state else {
-                        // Triggered when previous next_row returns None while self.state is State::Fetch.
-                        continue;
+                        // A schema boundary also ends an empty, waiting FETCH, so the
+                        // next request can bind formats for the new result columns.
+                        break;
                     };
                     // This is the only point where subscription cursor fetch waits without an
                     // inner query. Register the FETCH-level cancel token so CancelRequest can
@@ -728,12 +755,16 @@ impl SubscriptionCursor {
             }
         }
         self.last_fetch = Instant::now();
-        let (rows, seek_pk_row) = self.fields_manager.process_output_desc_row(ans);
+        let output_fields_manager = if ans.is_empty() {
+            &self.fields_manager
+        } else {
+            &fetch_fields_manager
+        };
+        let (rows, seek_pk_row) = output_fields_manager.process_output_desc_row(ans);
         if let Some(seek_pk_row) = seek_pk_row {
             self.seek_pk_row = Some(seek_pk_row);
         }
-        let desc = self
-            .fields_manager
+        let desc = output_fields_manager
             .get_output_fields()
             .iter()
             .map(to_pg_field)
@@ -1272,5 +1303,72 @@ impl CursorManager {
             },
             Cursor::Query(_) => Err(ErrorCode::InternalError("The plan of the cursor is the same as the query statement of the as when it was created.".to_owned()).into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fields_manager() -> FieldsManager {
+        FieldsManager {
+            columns_catalog: vec![],
+            row_fields: vec![
+                Field::with_name(DataType::Int32, "id"),
+                Field::with_name(DataType::Int64, "_row_id"),
+                Field::with_name(DataType::Int32, "value"),
+                Field::with_name(DataType::Varchar, "op"),
+                Field::with_name(DataType::Int64, "rw_timestamp"),
+            ],
+            row_output_col_indices: vec![0, 2, 3, 4],
+            row_pk_indices: vec![1],
+            stream_chunk_row_indices: vec![0, 1, 2],
+            op_index: 3,
+        }
+    }
+
+    #[test]
+    fn subscription_formats_follow_visible_columns() {
+        use Format::{Binary, Text};
+        let manager = fields_manager();
+        for (provided, expected) in [
+            (vec![], vec![Text, Text, Text, Text, Text]),
+            (vec![Text], vec![Text, Text, Text, Text, Text]),
+            (vec![Binary], vec![Binary, Text, Binary, Binary, Binary]),
+            (
+                vec![Binary, Text, Text, Binary],
+                vec![Binary, Text, Text, Text, Binary],
+            ),
+        ] {
+            let formats = manager.get_row_formats(&provided).unwrap();
+            assert_eq!(formats, expected);
+            for from_snapshot in [true, false] {
+                let (fields, stream_formats) =
+                    manager.get_row_stream_fields_and_formats(&formats, from_snapshot);
+                let count = if from_snapshot { 3 } else { 4 };
+                assert_eq!(fields.len(), count);
+                assert_eq!(stream_formats, expected[..count]);
+            }
+        }
+        assert!(manager.get_row_formats(&[Text, Binary]).is_err());
+        assert!(manager.get_row_formats(&[Text; 5]).is_err());
+    }
+
+    #[test]
+    fn subscription_timestamp_uses_requested_binary_format() {
+        let manager = fields_manager();
+        let formats = manager.get_row_formats(&[Format::Binary]).unwrap();
+        let timestamp = 1_u64 << 20;
+        let expected = convert_logstore_u64_to_unix_millis(timestamp) as i64;
+        let row = SubscriptionCursor::build_row(
+            vec![None; 4],
+            Some(timestamp),
+            &formats,
+            &StaticSessionData {
+                timezone: "UTC".to_owned(),
+            },
+        )
+        .unwrap();
+        assert_eq!(row[4].as_ref().unwrap().as_ref(), &expected.to_be_bytes());
     }
 }

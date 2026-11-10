@@ -54,6 +54,16 @@ link-time memory use at the cost of a larger binary. No PostgreSQL server, Docke
 engine, JVM, or monitoring stack is bundled; connect CDC to the upstream database
 you already run.
 
+Run the subscription wire-protocol regressions against the built executable:
+
+```powershell
+python e2e_test/subscription/test_fetch.py --binary target/thin-production/risingwave.exe -v
+```
+
+These tests use Python's standard library and start private instances with temporary
+storage and loopback ports. They cover schema changes during batched FETCH and
+text, binary, and per-column result formats without touching an existing server.
+
 ### nix shell
 
 If you use nix, you can also enter the nix shell via:

@@ -155,6 +155,9 @@ where
 
     pub fn clear(&mut self) {
         self.inner.clear();
+        self.reporter.heap_size = 0;
+        self.reporter.last_reported = 0;
+        self.reporter.metrics.set(0);
     }
 }
 
@@ -278,5 +281,40 @@ impl HeapSizeReporter {
 impl Drop for HeapSizeReporter {
     fn drop(&mut self) {
         self.metrics.set(0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clear_resets_memory_accounting() {
+        let mut cache = ManagedLruCache::unbounded(
+            Arc::new(AtomicSequence::default()),
+            MetricsInfo::for_test(),
+        );
+        // Cross the reporting threshold, then also exercise an unreported change.
+        cache.put(
+            1_usize,
+            vec![0_u8; (REPORT_SIZE_EVERY_N_KB_CHANGE << 10) + 1],
+        );
+        assert!(cache.reporter.last_reported > 0);
+        assert!(cache.reporter.metrics.get() > 0);
+        cache.put(2, vec![0_u8; 16]);
+        cache.clear();
+        assert!(cache.is_empty());
+        assert_eq!(cache.reporter.heap_size, 0);
+        assert_eq!(cache.reporter.last_reported, 0);
+        assert_eq!(cache.reporter.metrics.get(), 0);
+
+        let value = vec![0_u8; 32];
+        let expected = 3_usize.estimated_size() + value.estimated_size();
+        cache.put(3, value);
+        assert_eq!(cache.reporter.heap_size, expected);
+        cache.remove(&3);
+        assert_eq!(cache.reporter.heap_size, 0);
+        cache.clear();
+        assert_eq!(cache.reporter.metrics.get(), 0);
     }
 }
