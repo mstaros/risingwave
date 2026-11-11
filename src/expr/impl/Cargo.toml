@@ -12,7 +12,8 @@ repository = { workspace = true }
 ignored = ["chrono-tz", "futures-async-stream"]
 
 [features]
-udf = ["arrow-udf-runtime", "tonic", "ginepro", "zstd", "url"]
+# Embedded Rust/WASM only; other language and remote runtimes are not bundled.
+udf = ["arrow-udf-runtime", "zstd"]
 
 [dependencies]
 aho-corasick = "1"

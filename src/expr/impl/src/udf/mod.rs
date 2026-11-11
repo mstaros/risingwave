@@ -20,10 +20,7 @@ use risingwave_expr::sig::{
     CreateFunctionOutput, CreateOptions, UDF_IMPLS, UdfImpl, UdfImplDescriptor,
 };
 
-#[cfg(not(madsim))]
-mod external;
-mod python;
-mod quickjs;
+// This distribution supports embedded Rust/WASM UDFs only.
 mod wasm;
 
 /// Download wasm binary from a link.

@@ -48,7 +48,7 @@ $env:OPENSSL_NO_VENDOR = '1'
 $env:CMAKE_GENERATOR = 'Ninja'
 $env:CARGO_PROFILE_THIN_PRODUCTION_LTO = 'off'
 cargo build --locked -p risingwave_cmd_all --bin risingwave --profile thin-production `
-  --no-default-features --features openssl-vendored,rw-static-link
+  --no-default-features --features openssl-vendored,rw-static-link,udf
 ```
 
 Without `OPENSSL_NO_VENDOR`, the vendored OpenSSL build also needs Perl at build
@@ -56,9 +56,14 @@ time. Neither Perl nor OpenSSL DLLs are needed to run the resulting statically
 linked executable. The MSVC runtime must be installed or distributed alongside it.
 
 The executable is `target\thin-production\risingwave.exe`. Disabling LTO bounds
-link-time memory use at the cost of a larger binary. No PostgreSQL server, Docker
+link-time memory use; measure size before changing this setting. No PostgreSQL server, Docker
 engine, JVM, or monitoring stack is bundled; connect CDC to the upstream database
 you already run.
+
+The `udf` feature enables embedded Rust/WASM functions only. It does not bundle
+Python, JavaScript or remote UDF runtimes. Loading precompiled WASM requires no
+Rust toolchain on the deployment machine. Creating a function from Rust source
+requires Cargo, rustup and the `wasm32-wasip1` target on that machine.
 
 Run the subscription wire-protocol regressions against the built executable:
 
@@ -91,30 +96,6 @@ Check out [flake.nix](https://github.com/risingwavelabs/risingwave/blob/3795168b
 Then you'll be able to compile and start RisingWave!
 
 > `.cargo/config.toml` contains `rustflags` configurations like `-Clink-arg` and `-Ctarget-feature`. Since it will be [merged](https://doc.rust-lang.org/cargo/reference/config.html#hierarchical-structure) with `$HOME/.cargo/config.toml`, check the config files and make sure they don't conflict if you have global `rustflags` configurations for e.g. linker there.
-
-> If you want to build RisingWave with Embedded Python UDF feature, you need to install Python 3.12.
->
-> To install Python 3.12 on macOS, run:
->
-> ```shell
-> brew install python@3.12
-> ```
->
-> To install Python 3.12 on Debian-based Linux systems, run:
->
-> ```shell
-> sudo apt install software-properties-common
-> sudo add-apt-repository ppa:deadsnakes/ppa
-> sudo apt-get update
-> sudo apt-get install python3.12 python3.12-dev
-> ```
->
-> If the default `python3` version is not 3.12, please set the `PYO3_PYTHON` environment variable:
->
-> ```shell
-> export PYO3_PYTHON=python3.12
-> ```
-
 
 ## Start and monitor a dev cluster
 
