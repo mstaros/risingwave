@@ -96,11 +96,11 @@ class Pg:
 @contextlib.contextmanager
 def server(binary):
     with tempfile.TemporaryDirectory(prefix="rw-fetch-") as directory:
-        sockets = [socket.socket() for _ in range(5)]
+        sockets = [socket.socket() for _ in range(6)]
         for listener in sockets:
             listener.bind(("127.0.0.1", 0))
         ports = [listener.getsockname()[1] for listener in sockets]
-        meta, compute, sql, rpc, webhook = ["127.0.0.1:%d" % p for p in ports]
+        meta, compute, sql, rpc, webhook, metrics = ["127.0.0.1:%d" % p for p in ports]
         config = pathlib.Path(directory) / "config.toml"
         config.write_text("[server]\ntelemetry_enabled = false\n")
         log_path = pathlib.Path(directory) / "server.log"
@@ -109,7 +109,7 @@ def server(binary):
         env["RUST_LOG"] = "warn"
         args = [
             binary, "standalone", "--config-path", str(config),
-            "--prometheus-listener-addr", "127.0.0.1:0",
+            "--prometheus-listener-addr", metrics,
             f"--meta-opts=--listen-addr {meta} --advertise-addr {meta} "
             "--backend mem --state-store hummock+memory --data-directory test "
             "--dangerous-max-idle-secs 120",
@@ -147,6 +147,7 @@ def server(binary):
                         if time.monotonic() > deadline:
                             raise
                         time.sleep(0.1)
+                client.metrics_port = ports[5]
                 yield client
             except Exception:
                 log.flush()

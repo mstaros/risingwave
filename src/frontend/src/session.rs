@@ -1332,12 +1332,14 @@ impl SessionImpl {
     }
 
     /// Returns `None` when the table's committed epoch has not reached `min_epoch`.
+    /// Otherwise returns the non-empty change-log epochs found from `min_epoch`, together with
+    /// the committed epoch used as the inclusive upper bound of the lookup.
     pub async fn list_change_log_epochs(
         &self,
         table_id: TableId,
         min_epoch: u64,
         max_count: u32,
-    ) -> Result<Option<Vec<u64>>> {
+    ) -> Result<Option<(Vec<u64>, u64)>> {
         let committed_epoch = self
             .env
             .hummock_snapshot_manager()
@@ -1363,15 +1365,16 @@ impl SessionImpl {
             )
             .await?;
         let Some(e) = ret.get(&table_id) else {
-            return Ok(Some(vec![]));
+            return Ok(Some((vec![], committed_epoch)));
         };
-        Ok(Some(
+        Ok(Some((
             e.iter()
                 .flat_map(|l| l.epochs())
                 .filter(|e| *e >= min_epoch && *e <= committed_epoch)
                 .take(max_count as usize)
                 .collect(),
-        ))
+            committed_epoch,
+        )))
     }
 
     pub fn clear_cancel_query_flag(&self) {

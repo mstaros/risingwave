@@ -286,6 +286,19 @@ impl Display for State {
     }
 }
 
+/// Outcome of looking up the next change-log epoch for a subscription cursor.
+enum NextLogEpoch {
+    /// A non-empty epoch to read, and the epoch that must follow it if one is already known.
+    Found {
+        rw_timestamp: u64,
+        expected_timestamp: Option<u64>,
+    },
+    /// The seek position is beyond the table's committed epoch. No lookup was made.
+    AheadOfFrontier,
+    /// No changes exist from the seek position through `checked_epoch`, which is committed.
+    Empty { checked_epoch: u64 },
+}
+
 #[derive(Clone)]
 struct FieldsManager {
     columns_catalog: Vec<ColumnCatalog>,
@@ -532,7 +545,10 @@ impl SubscriptionCursor {
                     )
                     .await
                     {
-                        Ok((Some(rw_timestamp), expected_timestamp)) => {
+                        Ok(NextLogEpoch::Found {
+                            rw_timestamp,
+                            expected_timestamp,
+                        }) => {
                             let (mut chunk_stream, init_query_timer, catalog) =
                                 Self::initiate_query(
                                     Some(rw_timestamp),
@@ -580,7 +596,22 @@ impl SubscriptionCursor {
                                 init_query_timer,
                             };
                         }
-                        Ok((None, _)) => return Ok(None),
+                        Ok(NextLogEpoch::AheadOfFrontier) => {
+                            // Nothing is committed at or after the seek position, so no
+                            // unread history can have aged out.
+                            self.cursor_need_drop_time = Instant::now()
+                                + Duration::from_secs(self.subscription.retention_seconds);
+                            return Ok(None);
+                        }
+                        Ok(NextLogEpoch::Empty { checked_epoch }) => {
+                            // Nothing changed up to `checked_epoch`. Seek past it so the idle
+                            // wait blocks until a later epoch commits instead of repeating
+                            // this lookup.
+                            *seek_timestamp = checked_epoch + 1;
+                            self.cursor_need_drop_time = Instant::now()
+                                + Duration::from_secs(self.subscription.retention_seconds);
+                            return Ok(None);
+                        }
                         Err(e) => {
                             self.state = State::Invalid;
                             return Err(e);
@@ -716,7 +747,11 @@ impl SubscriptionCursor {
                     // interrupt this wait. The token also marks the whole FETCH as cancelled, so
                     // we won't start another inner query after a cancellation.
                     cancel_handle.register(session);
-                    let timeout = tokio::time::sleep(Duration::from_secs(timeout_seconds));
+                    // Wake-ups share the deadline of this FETCH instead of restarting the wait.
+                    let remaining = timeout_instant
+                        .map(|deadline| deadline.saturating_duration_since(Instant::now()))
+                        .unwrap_or_default();
+                    let timeout = tokio::time::sleep(remaining);
                     tokio::pin!(timeout);
                     tokio::select! {
                         biased;
@@ -779,7 +814,7 @@ impl SubscriptionCursor {
         expected_timestamp: Option<u64>,
         handler_args: HandlerArgs,
         dependent_subscription: &SubscriptionCatalog,
-    ) -> Result<(Option<u64>, Option<u64>)> {
+    ) -> Result<NextLogEpoch> {
         let session = handler_args.session;
         // Test subscription existence
         session.get_subscription_by_schema_id_name(
@@ -788,11 +823,11 @@ impl SubscriptionCursor {
         )?;
 
         // The epoch here must be pulled every time, otherwise there will be cache consistency issues
-        let Some(new_epochs) = session
+        let Some((new_epochs, checked_epoch)) = session
             .list_change_log_epochs(table_id, seek_timestamp, 2)
             .await?
         else {
-            return Ok((None, None));
+            return Ok(NextLogEpoch::AheadOfFrontier);
         };
         if let Some(expected_timestamp) = expected_timestamp
             && (new_epochs.is_empty() || &expected_timestamp != new_epochs.first().unwrap())
@@ -806,7 +841,13 @@ impl SubscriptionCursor {
             )
             .into());
         }
-        Ok((new_epochs.get(0).cloned(), new_epochs.get(1).cloned()))
+        match new_epochs.first() {
+            Some(&rw_timestamp) => Ok(NextLogEpoch::Found {
+                rw_timestamp,
+                expected_timestamp: new_epochs.get(1).copied(),
+            }),
+            None => Ok(NextLogEpoch::Empty { checked_epoch }),
+        }
     }
 
     pub fn gen_batch_plan_result(
